@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrivacyVision Agent</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header__brand">
+      <div class="header__logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+          <circle cx="12" cy="16" r="2"></circle>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <div class="header__text">
+        <h1 class="header__title">PrivacyVision Agent</h1>
+        <span class="header__subtitle">SIH 2026 — On-Device Biometrics & Local Vault</span>
+      </div>
+    </div>
+    <div class="header__status">
+      <span class="status-dot"></span>
+      <span>AIRTIGHT LOCAL</span>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    <button class="tab-btn active" data-target="tab-run">
+      <span>🤖</span> Run Agent
+    </button>
+    <button class="tab-btn" data-target="tab-vault">
+      <span>🔒</span> Vault & Biometrics
+    </button>
+    <button class="tab-btn" data-target="tab-audit">
+      <span>🛡️</span> Zero-Leak Audit
+    </button>
+  </nav>
+
+  <main class="content">
+    
+    <!-- Tab: Run Agent -->
+    <section id="tab-run" class="tab-pane active">
+      <div class="input-group">
+        <label for="chat-input" class="input-label">Natural Language Instruction</label>
+        <textarea id="chat-input" class="textarea" placeholder="e.g. Fill transfer form and pay ₹25,000, or login to Instagram" rows="3"></textarea>
+      </div>
+
+      <button id="btn-run" class="btn btn-primary" style="margin-top: 14px;">
+        ▶ Run Autonomous Agent
+      </button>
+
+      <!-- Latency Breakdown -->
+      <div id="latency-box" class="info-box latency-box" style="display: none; margin-top: 12px;">
+        <div class="info-box-header">⚡ On-Device Latency Breakdown:</div>
+        <div class="latency-grid">
+          <div>• Local NER Scanner: <span id="lat-ner">--</span></div>
+          <div>• Redaction Engine: <span id="lat-redaction">--</span></div>
+          <div>• Cloud VLM (Luna): <span id="lat-vlm">--</span></div>
+          <div>• Action Injector: <span id="lat-dom">--</span></div>
+        </div>
+      </div>
+
+      <!-- Privacy Status -->
+      <div id="privacy-status" class="status-box status-success" style="margin-top: 12px;">
+        <div class="status-box-header">
+          <span>✓ Local Vault & Biometrics Ready</span>
+          <span class="badge badge-success">0 BYTES LEAKED</span>
+        </div>
+        <div class="status-box-body" id="privacy-status-text">
+          Zero plaintext passwords or UPI PINs leave your machine. Sensitive actions require your face recognition.
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Encrypted Vault & Biometrics -->
+    <section id="tab-vault" class="tab-pane">
+      
+      <!-- Biometric Face Enrollment Section -->
+      <div class="card-box bio-enroll-box">
+        <div class="card-box-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>📸</span>
+            <strong>On-Device Face Biometrics</strong>
+          </div>
+          <span id="face-status-badge" class="badge badge-secondary">CHECKING...</span>
+        </div>
+        <div class="bio-enroll-content">
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button id="btn-enroll-face" class="btn btn-sm btn-outline" style="flex: 1;">
+              📸 Manage Face Biometrics
+            </button>
+            <button id="btn-clear-face" class="btn btn-sm btn-danger" style="display: none;">
+              Clear
+            </button>
+          </div>
+          <div class="tiny-note">Opens dedicated camera authorization tab. Stored 100% on-device for password & payment verification.</div>
+        </div>
+      </div>
+
+      <!-- Vault Controls -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin: 14px 0 8px;">
+        <div style="font-weight: 700; font-size: 0.95rem; color: #1e293b;">
+          🔑 Saved Local Credentials
+        </div>
+        <button id="btn-show-add-modal" class="btn btn-sm btn-primary" style="width: auto; padding: 6px 12px;">
+          + Add Account
+        </button>
+      </div>
+
+      <div class="info-box vault-info" style="margin-bottom: 10px;">
+        🔒 <strong>Hardware-Isolated AES-256-GCM Vault:</strong> Plaintext credentials exist only inside your PC's memory.
+      </div>
+
+      <!-- Vault List -->
+      <div class="vault-list" id="vault-list">
+        <div class="placeholder-text" style="padding: 10px; text-align: center;">Loading encrypted vault...</div>
+      </div>
+
+      <!-- Add Credential Modal Overlay -->
+      <div id="add-cred-modal" class="popup-modal" style="display: none;">
+        <div class="popup-modal-content">
+          <div class="popup-modal-header">
+            <strong>Save Credential to Local Vault</strong>
+            <button id="btn-close-add-modal" class="close-btn">&times;</button>
+          </div>
+          <form id="form-add-cred">
+            <div class="form-row">
+              <label>Domain / Site</label>
+              <input type="text" id="add-domain" placeholder="e.g. instagram.com or securebank" required>
+            </div>
+            <div class="form-row">
+              <label>Account Name</label>
+              <input type="text" id="add-name" placeholder="e.g. Instagram Personal" required>
+            </div>
+            <div class="form-row">
+              <label>Category</label>
+              <select id="add-category">
+                <option value="social">Social Media</option>
+                <option value="banking">Banking & Cards</option>
+                <option value="upi">UPI Payment</option>
+                <option value="general">General Website</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Username / Email / UPI ID</label>
+              <input type="text" id="add-username" placeholder="Username, email, or UPI handle">
+            </div>
+            <div class="form-row">
+              <label>Password / Secret</label>
+              <input type="password" id="add-password" placeholder="Account password">
+            </div>
+            <div class="form-row">
+              <label>UPI PIN / Card CVV</label>
+              <input type="password" id="add-pin" placeholder="6-digit UPI PIN or 3-digit CVV" maxlength="6">
+            </div>
+            <div class="form-row">
+              <label>Bank Account No. (Optional)</label>
+              <input type="text" id="add-account" placeholder="e.g. 9876543210123456">
+            </div>
+            <div class="form-row">
+              <label>IFSC Code (Optional)</label>
+              <input type="text" id="add-ifsc" placeholder="e.g. HDFC0004567">
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+              <button type="button" id="btn-cancel-add" class="btn btn-secondary" style="flex: 1;">Cancel</button>
+              <button type="submit" class="btn btn-primary" style="flex: 1;">Encrypt & Save</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Tab: Zero-Leak Audit -->
+    <section id="tab-audit" class="tab-pane">
+      <div class="info-box">
+        🔍 <strong>Live Zero-Leakage Audit for Active Page:</strong> Showing exact DOM fields detected locally vs sanitized tokens sent to cloud VLM.
+      </div>
+      
+      <div class="audit-grid">
+        <div class="audit-col local-col">
+          <div class="audit-col-header">💻 Local Browser (Decrypted)</div>
+          <div class="audit-content" id="audit-local">
+            <div class="placeholder-text">Run analysis to see DOM state...</div>
+          </div>
+        </div>
+        <div class="audit-col cloud-col">
+          <div class="audit-col-header">☁️ Cloud VLM Payload (Luna)</div>
+          <div class="audit-content" id="audit-cloud">
+             <div class="placeholder-text">Run analysis to see sanitized payload...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

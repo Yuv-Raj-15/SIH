@@ -1,0 +1,328 @@
+/* ===== Content script overlay styles ===== */
+
+/* Redaction overlay highlights (visible during analysis) */
+.pv-redaction-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2147483646;
+  border: 2px solid rgba(248, 113, 113, 0.7);
+  border-radius: 4px;
+  background: rgba(248, 113, 113, 0.12);
+  transition: opacity 0.3s ease;
+}
+
+.pv-redaction-overlay::after {
+  content: attr(data-pii-type);
+  position: absolute;
+  top: -18px;
+  left: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(248, 113, 113, 0.85);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+}
+
+/* Agent action indicator */
+.pv-action-indicator {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2147483646;
+  border: 2px solid rgba(79, 140, 255, 0.8);
+  border-radius: 6px;
+  background: rgba(79, 140, 255, 0.1);
+  animation: pv-pulse 1.5s ease-in-out infinite;
+}
+
+.pv-action-indicator::after {
+  content: attr(data-action);
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(79, 140, 255, 0.9);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+}
+
+@keyframes pv-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79, 140, 255, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(79, 140, 255, 0); }
+}
+
+/* Scanning state - pulse on whole page */
+.pv-scanning-active {
+  outline: 3px solid rgba(79, 140, 255, 0.3) !important;
+  outline-offset: -3px;
+  animation: pv-scan-pulse 2s ease-in-out infinite;
+}
+
+@keyframes pv-scan-pulse {
+  0%, 100% { outline-color: rgba(79, 140, 255, 0.1); }
+  50% { outline-color: rgba(79, 140, 255, 0.35); }
+}
+
+/* ===== Biometric Authorization Gate Modal ===== */
+#pv-biometric-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #f1f5f9;
+}
+
+.pv-bio-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 15, 29, 0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.pv-bio-modal {
+  position: relative;
+  width: 90%;
+  max-width: 440px;
+  background: #0f172a;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 24px rgba(56, 189, 248, 0.15);
+  overflow: hidden;
+  animation: pv-bio-pop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
+}
+
+.pv-bio-modal.pv-bio-success-glow {
+  border-color: #22c55e;
+  box-shadow: 0 0 35px rgba(34, 197, 94, 0.35);
+}
+
+@keyframes pv-bio-pop {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.pv-bio-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pv-bio-shield {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.pv-bio-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.pv-bio-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+.pv-bio-body {
+  padding: 18px 20px;
+}
+
+.pv-bio-details {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.pv-bio-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.pv-bio-row:last-of-type {
+  margin-bottom: 0;
+}
+
+.pv-bio-label {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.pv-bio-val {
+  color: #e2e8f0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.pv-bio-highlight {
+  color: #38bdf8;
+}
+
+.pv-bio-amount {
+  color: #4ade80;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pv-bio-note {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.pv-bio-camera-box {
+  position: relative;
+  width: 100%;
+  height: 190px;
+  background: #020617;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#pv-bio-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.pv-bio-scanner-reticle {
+  position: absolute;
+  width: 130px;
+  height: 150px;
+  pointer-events: none;
+}
+
+.pv-bio-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #38bdf8;
+}
+
+.pv-bio-corner.top-left { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.pv-bio-corner.top-right { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.pv-bio-corner.bottom-left { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.pv-bio-corner.bottom-right { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+
+.pv-bio-scan-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+  box-shadow: 0 0 10px #38bdf8;
+  animation: pv-scan-move 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes pv-scan-move {
+  from { top: 5%; }
+  to { top: 92%; }
+}
+
+.pv-bio-cam-status {
+  position: absolute;
+  bottom: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.pv-bio-cam-status.pv-cam-verified {
+  color: #22c55e;
+  border-color: #22c55e;
+  background: rgba(20, 83, 45, 0.9);
+}
+
+.pv-bio-cam-status.pv-cam-error {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.pv-bio-footer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pv-bio-btn {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.pv-bio-btn-cancel {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.pv-bio-btn-cancel:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.pv-bio-btn-approve {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.pv-bio-btn-approve:hover {
+  background: linear-gradient(135deg, #0369a1, #1d4ed8);
+}
+

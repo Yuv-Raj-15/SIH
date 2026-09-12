@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PrivacyVision Offscreen</title>
+</head>
+<body>
+  <!-- 
+    Offscreen document for PrivacyVision Agent.
+    Provides Canvas API access for screenshot redaction (service workers can't use Canvas).
+  -->
+  <canvas id="redaction-canvas" style="display:none;"></canvas>
+  <script src="../lib/redaction-engine.js"></script>
+  <script src="offscreen.js"></script>
+</body>
+</html>

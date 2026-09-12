@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrivacyVision — On-Device Face Biometrics Enrollment</title>
+  <link rel="stylesheet" href="face_enroll.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-shield">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">PrivacyVision Agent</h1>
+          <p class="brand-subtitle">SIH 2026 — On-Device Facial Biometrics & Zero-Leak Security Gateway</p>
+        </div>
+      </div>
+      <div class="airtight-badge">
+        <span class="status-pulse"></span>
+        <span>100% LOCAL AIRTIGHT VAULT</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-grid">
+      <!-- Left Column: Camera Viewfinder / Enrollment -->
+      <section class="card enrollment-card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">📷</span>
+            <h2>Face Signature Enrollment</h2>
+          </div>
+          <span id="enroll-badge" class="badge badge-unregistered">NOT ENROLLED</span>
+        </div>
+
+        <p class="card-description">
+          Chrome requires camera authorization in a dedicated tab. All biometric signatures are computed locally on your CPU using a normalized luminance feature vector. <strong>Zero video frames or facial vectors are ever uploaded to any cloud or AI server.</strong>
+        </p>
+
+        <!-- Viewfinder Container -->
+        <div class="viewfinder-wrapper">
+          <video id="webcam-video" autoplay playsinline muted></video>
+          <canvas id="capture-canvas" style="display: none;"></canvas>
+
+          <!-- Scanning Reticle Overlay -->
+          <div class="reticle-overlay" id="reticle-overlay">
+            <div class="reticle-corner top-left"></div>
+            <div class="reticle-corner top-right"></div>
+            <div class="reticle-corner bottom-left"></div>
+            <div class="reticle-corner bottom-right"></div>
+            <div class="reticle-scanline"></div>
+            <div class="reticle-target-guide">
+              <svg viewBox="0 0 100 120" class="face-guide-svg">
+                <ellipse cx="50" cy="55" rx="36" ry="46" fill="none" stroke="rgba(56, 189, 248, 0.4)" stroke-width="2" stroke-dasharray="4 4"/>
+              </svg>
+              <span class="guide-text">Align Face Inside Guide</span>
+            </div>
+          </div>
+
+          <!-- Camera Status Overlay Message -->
+          <div id="cam-status-msg" class="cam-status-msg">
+            Click "Start Camera" to begin live biometric enrollment
+          </div>
+        </div>
+
+        <!-- Camera Controls -->
+        <div class="controls-row">
+          <button id="btn-start-cam" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 7l-7 5 7 5V7z"/>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
+            Start Camera
+          </button>
+
+          <button id="btn-capture-face" class="btn btn-success" disabled>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            Capture Face Signature
+          </button>
+
+          <button id="btn-stop-cam" class="btn btn-secondary" style="display: none;">
+            Stop Camera
+          </button>
+        </div>
+
+        <!-- File Upload Fallback (Guaranteed to work if camera is broken or VM) -->
+        <div class="divider">
+          <span>OR UPLOAD FACE PHOTO FROM DEVICE</span>
+        </div>
+
+        <div class="file-upload-box">
+          <input type="file" id="input-face-file" accept="image/*" style="display: none;">
+          <button id="btn-trigger-file" class="btn btn-outline" type="button">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Choose Selfie / Face Photo File (.jpg, .png)
+          </button>
+          <span class="file-help">Works offline without a webcam. Useful on remote desktops and testing machines.</span>
+        </div>
+      </section>
+
+      <!-- Right Column: Stored Profile & Live Verification Test -->
+      <section class="card profile-card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">🛡️</span>
+            <h2>Active Biometric Profile</h2>
+          </div>
+          <button id="btn-clear-profile" class="btn-text-danger" style="display: none;">
+            Delete Profile
+          </button>
+        </div>
+
+        <!-- Profile Details Box -->
+        <div id="profile-display" class="profile-box empty">
+          <div class="empty-state">
+            <div class="empty-icon">👤</div>
+            <p>No biometric signature enrolled yet.</p>
+            <span class="empty-sub">Enroll your face on the left to activate hardware-isolated password and payment authorization.</span>
+          </div>
+        </div>
+
+        <!-- Live Biometric Verification Test -->
+        <div class="test-verification-box" id="test-verification-box" style="display: none;">
+          <div class="test-header">
+            <h3>Live Verification Test</h3>
+            <span class="subtext">Verify match score against saved signature</span>
+          </div>
+
+          <div class="similarity-meter-wrapper">
+            <div class="similarity-meter-header">
+              <span>Cosine Similarity Match:</span>
+              <strong id="sim-score-text">--%</strong>
+            </div>
+            <div class="progress-track">
+              <div id="sim-progress-bar" class="progress-fill" style="width: 0%;"></div>
+            </div>
+            <div id="sim-status-label" class="sim-status-badge">Stand in front of camera to test</div>
+          </div>
+        </div>
+
+        <!-- Zero-Leak Architecture Guarantee -->
+        <div class="security-guarantee-box">
+          <div class="sec-title">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#10b981" stroke-width="2.5">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <span>Hardware-Isolated Zero-Leak Guarantee</span>
+          </div>
+          <ul class="sec-bullets">
+            <li>Vector Algorithm: <code>Local-Normalized-Luminance-v1 (4096-Dim)</code></li>
+            <li>Stored exclusively inside <code>chrome.storage.local</code> with AES-256 vault linkage</li>
+            <li>Zero pixels, frames, or facial templates are transmitted to GPT-5.6 Luna or third-party servers</li>
+            <li>Required as a hardware gate before the agent can submit banking transfers or unlock passwords</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>PrivacyVision Agent v1.0.0 &bull; Built for Smart India Hackathon (SIH) 2026 &bull; Fully Site-Independent Browser Automation</span>
+    </footer>
+  </div>
+
+  <script src="face_enroll.js"></script>
+</body>
+</html>

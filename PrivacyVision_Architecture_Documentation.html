@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PrivacyVision Agent — Architecture & Technical Documentation</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 16mm 14mm;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      line-height: 1.55;
+      font-size: 13px;
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+    }
+    .header {
+      border-bottom: 2px solid #2563eb;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .header-title h1 {
+      font-size: 24px;
+      margin: 0 0 6px 0;
+      color: #0f172a;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .header-title p {
+      margin: 0;
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-primary { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .badge-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-amber { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+
+    h2 {
+      font-size: 16px;
+      color: #0f172a;
+      border-left: 4px solid #2563eb;
+      padding-left: 10px;
+      margin: 24px 0 12px 0;
+      font-weight: 700;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 13px;
+      color: #334155;
+      margin: 14px 0 6px 0;
+      font-weight: 600;
+      page-break-after: avoid;
+    }
+    p {
+      margin: 0 0 10px 0;
+    }
+
+    /* Executive Callout */
+    .callout {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 18px;
+    }
+    .callout-title {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 13px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Table styles */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px 0;
+      font-size: 12px;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+    }
+    tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    /* Workflow Cards */
+    .step-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 14px 0 20px 0;
+    }
+    .step-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 14px;
+      background: #ffffff;
+      border-left: 4px solid #3b82f6;
+      page-break-inside: avoid;
+    }
+    .step-header {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .step-body {
+      color: #475569;
+      font-size: 12px;
+    }
+
+    /* Tech Stack Grid */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0;
+      page-break-inside: avoid;
+    }
+    .tech-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #f8fafc;
+    }
+    .tech-card h4 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      color: #0f172a;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tech-card ul {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 11.5px;
+      color: #475569;
+    }
+    .tech-card li {
+      margin-bottom: 4px;
+    }
+
+    .footer {
+      margin-top: 30px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+      font-size: 11px;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-title">
+      <h1>PrivacyVision Agent</h1>
+      <p>System Architecture, Technical Concepts & End-to-End Workflow</p>
+    </div>
+    <div class="badges">
+      <span class="badge badge-primary">SIH 2026</span>
+      <span class="badge badge-success">AIRTIGHT PII GUARD</span>
+      <span class="badge badge-amber">HYBRID VLM</span>
+    </div>
+  </div>
+
+  <!-- Executive Summary -->
+  <div class="callout">
+    <div class="callout-title">📌 Executive Overview</div>
+    <p style="margin:0; font-size:12px; color:#334155;">
+      <strong>PrivacyVision Agent</strong> is an airtight, privacy-first autonomous browser automation agent. Conventional AI browser agents upload raw screenshots and full DOM data to external cloud APIs, leaking sensitive passwords, banking credentials, UPI PINs, and personal emails. PrivacyVision solves this by running an <strong>on-device cryptographic vault</strong>, <strong>local NER / PII redaction</strong>, and <strong>reversible tokenization</strong> inside the browser. The cloud VLM (Vision-Language Model) only receives sanitized data and symbolic tokens, while real secrets are injected strictly on-device.
+    </p>
+  </div>
+
+  <!-- Section 1: Core Terms & Definitions -->
+  <h2>1. Definitions of All Key Concepts</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Term</th>
+        <th>Definition & Role in Project</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>PII (Personally Identifiable Information)</strong></td>
+        <td>Any sensitive personal data that belongs to a user: passwords, credit card numbers, CVVs, bank accounts, UPI PINs, phone numbers, and emails. The primary goal of PrivacyVision is ensuring 0 bytes of plaintext PII leave the device.</td>
+      </tr>
+      <tr>
+        <td><strong>VLM (Vision-Language Model)</strong></td>
+        <td>A multimodal AI model capable of both visual understanding (analyzing screenshots) and natural language reasoning (deciding the next browser action like click or type).</td>
+      </tr>
+      <tr>
+        <td><strong>AES-256-GCM</strong></td>
+        <td>Advanced Encryption Standard with Galois/Counter Mode. Military-grade symmetric authenticated encryption used to secure passwords and financial credentials in the local vault on your disk.</td>
+      </tr>
+      <tr>
+        <td><strong>Local Encrypted Vault</strong></td>
+        <td>An on-device secure database managed by <code>lib/vault.js</code> using the Web Cryptography API (<code>crypto.subtle</code>). Decryption keys are derived on-device and never shared over the network.</td>
+      </tr>
+      <tr>
+        <td><strong>NER (Named Entity Recognition)</strong></td>
+        <td>Pattern-matching and regex algorithms in <code>lib/pii-scanner.js</code> that scan DOM text to classify sensitive fields (e.g. recognizing that <code>4532...</code> is a card, or <code>pass...</code> is a secret).</td>
+      </tr>
+      <tr>
+        <td><strong>Reversible Tokenization</strong></td>
+        <td>Replacing real secrets in prompts and DOM text with symbolic placeholder tokens (e.g., <code>[EMAIL_1]</code>, <code>[PASSWORD]</code>). The mapping table is kept in memory locally; cloud servers only see the token.</td>
+      </tr>
+      <tr>
+        <td><strong>Visual Redaction Engine</strong></td>
+        <td>An offscreen canvas document that renders solid black masks and blur overlays directly over passwords, inputs, and detected face coordinates on full-tab screenshots before transmission.</td>
+      </tr>
+      <tr>
+        <td><strong>Back/Forward Cache (bfcache)</strong></td>
+        <td>Chromium's in-memory cache for fast back/forward navigation. Our extension includes specialized state recovery to prevent port disconnection errors when pages navigate.</td>
+      </tr>
+      <tr>
+        <td><strong>Ollama & LLaVA:7b</strong></td>
+        <td>A local AI runtime on <code>localhost:11434</code> executing an open-source 7-billion parameter vision model, allowing 100% offline, cloud-free local inference.</td>
+      </tr>
+      <tr>
+        <td><strong>GPT-5.6 Luna</strong></td>
+        <td>High-performance cloud reasoning model utilized in Hybrid mode. Receives only sanitized screenshots and tokenized instructions to plan complex web interactions.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Page Break -->
+  <div class="page-break"></div>
+
+  <!-- Section 2: Technical Architecture & Components -->
+  <h2>2. Technology Stack & Component Architecture</h2>
+
+  <div class="tech-grid">
+    <div class="tech-card">
+      <h4>🌐 Chrome Extension (Manifest V3)</h4>
+      <ul>
+        <li><strong>Runtime:</strong> Modern JavaScript (ES2022+), Web APIs, HTML5, Vanilla CSS.</li>
+        <li><strong>Local Vault (<code>vault.js</code>):</strong> AES-256-GCM encryption with PBKDF2 key derivation via <code>crypto.subtle</code>; stored in <code>chrome.storage.local</code>. Features cross-TLD brand matching (e.g. Amazon global).</li>
+        <li><strong>DOM Analyzer (<code>dom-analyzer.js</code>):</strong> Extracts interactive elements (buttons, inputs, links), assigns stable numeric indices, and generates compact summaries for the AI.</li>
+        <li><strong>PII Scanner (<code>pii-scanner.js</code>):</strong> Real-time regex and attribute scanner for emails, phones, UPI handles, cards, and passwords. Generates reversible token maps.</li>
+        <li><strong>Action Injector (<code>action-executor.js</code>):</strong> Translates AI commands into native pointer/mouse/keyboard events. Automatically queries the vault and injects real passwords into target password inputs.</li>
+      </ul>
+    </div>
+
+    <div class="tech-card">
+      <h4>⚡ Server Backend (FastAPI / Python)</h4>
+      <ul>
+        <li><strong>Runtime:</strong> Python 3.10+, FastAPI, Uvicorn asynchronous HTTP server.</li>
+        <li><strong>VLM Client (<code>vlm_client.py</code>):</strong> Dual-backend driver supporting both 100% Local Ollama (<code>llava:7b</code>) and Cloud OpenAI-compatible endpoints (<code>gpt-5.6-luna</code>).</li>
+        <li><strong>Action Parser (<code>action_parser.py</code>):</strong> Robust parser that normalizes raw model text, extracts JSON from codeblocks, and validates browser actions (click, type, scroll, navigate).</li>
+        <li><strong>Prompt Engine (<code>prompts.py</code>):</strong> Comprehensive system prompts directing the AI to act step-by-step, inspect interactive elements, avoid action loops, and leverage on-device vault autofill.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Section 3: End-to-End Workflow -->
+  <h2>3. Complete End-to-End Workflow</h2>
+
+  <div class="step-grid">
+    <div class="step-card" style="border-left-color: #2563eb;">
+      <div class="step-header">Phase 1: User Instruction & Task Launch</div>
+      <div class="step-body">
+        The user opens the extension popup, types a natural language goal (e.g., <em>"buy samsung s25 ultra for me from amazon"</em> or <em>"login to Instagram"</em>), and clicks <strong>▶ Run Autonomous Agent</strong>. The background service worker (<code>background.js</code>) starts an iterative multi-step execution loop.
+      </div>
+    </div>
+
+    <div class="step-card" style="border-left-color: #059669;">
+      <div class="step-header">Phase 2: On-Device DOM Scan & PII Tokenization</div>
+      <div class="step-body">
+        The content script inspects the active webpage. The <code>PIIScanner</code> identifies sensitive text and inputs (emails, phones, account numbers, passwords). Real values are placed in an in-memory reversible token map (<code>priya.sharma@gmail.com</code> &rarr; <code>[EMAIL_1]</code>). The natural language prompt from the user is also sanitized so no raw PII leaves the browser.
+      </div>
+    </div>
+
+    <div class="step-card" style="border-left-color: #d97706;">
+      <div class="step-header">Phase 3: Screenshot Capture & Offscreen Visual Redaction</div>
+      <div class="step-body">
+        <code>chrome.tabs.captureVisibleTab</code> takes a visual screenshot. Coordinates of password inputs and sensitive fields are passed to a Chromium offscreen document (<code>offscreen.js</code>). Solid black redaction rectangles and blurs are drawn over all sensitive regions. Only the masked image and tokenized DOM summary are sent to the reasoning engine.
+      </div>
+    </div>
+
+    <div class="step-card" style="border-left-color: #7c3aed;">
+      <div class="step-header">Phase 4: Hybrid AI Reasoning (Local Ollama / GPT-5.6 Luna)</div>
+      <div class="step-body">
+        The Python server receives the sanitized screenshot, tokenized DOM summary, and sanitized instruction. Depending on <code>VLM_BACKEND</code> in <code>.env</code>:
+        <ul>
+          <li><strong>Local Mode:</strong> Dispatches to local Ollama running <code>llava:7b</code> on <code>http://localhost:11434</code> (100% offline, zero cloud data transfer).</li>
+          <li><strong>Hybrid Mode:</strong> Dispatches to <code>gpt-5.6-luna</code>. Because all PII was already stripped on-device, the cloud planner receives zero confidential data.</li>
+        </ul>
+        The model outputs structured JSON with the next action (e.g., <code>type</code> query into search box, or <code>click</code> product).
+      </div>
+    </div>
+
+    <div class="step-card" style="border-left-color: #0284c7;">
+      <div class="step-header">Phase 5: On-Device Action Execution & Automatic Vault Injection</div>
+      <div class="step-body">
+        The background script forwards the actions to <code>action-executor.js</code>. Keystroke and pointer events are injected with framework compatibility.
+        <br><strong>Automatic Password Resolution:</strong> When the agent targets a password field, <code>_resolveVaultValue</code> queries <code>Vault.findMatchingCredentials()</code> for the current domain, retrieves the decrypted secret from the local AES-256 store, and enters it directly into the DOM.
+      </div>
+    </div>
+
+    <div class="step-card" style="border-left-color: #dc2626;">
+      <div class="step-header">Phase 6: Navigation Settlement & Multi-Step Continuation</div>
+      <div class="step-body">
+        If an action navigates the page (e.g. clicking an Amazon search result), the background worker detects the transition, gracefully handles the Chromium Back/Forward cache (<code>bfcache</code>) disconnect, waits for the new page to finish loading (<code>tab.status === 'complete'</code>), re-attaches content scripts, and continues to the next step until the goal is fully accomplished.
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>PrivacyVision Agent — Technical System Architecture Report</span>
+    <span>Generated: September 2026 • SIH Confidential</span>
+  </div>
+
+</body>
+</html>
