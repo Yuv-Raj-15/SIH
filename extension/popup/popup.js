@@ -19,8 +19,10 @@
     latVlm: $('#lat-vlm'),
     latDom: $('#lat-dom'),
     privacyStatusText: $('#privacy-status-text'),
-    auditLocal: $('#audit-local'),
-    auditCloud: $('#audit-cloud'),
+    auditLocal: $('#audit-local-text') || $('#audit-local'),
+    auditCloud: $('#audit-cloud-text') || $('#audit-cloud'),
+    auditMaskedImg: $('#audit-masked-img'),
+    auditImageContainer: $('#audit-image-container'),
     vaultList: $('#vault-list'),
     faceStatusBadge: $('#face-status-badge'),
     btnEnrollFace: $('#btn-enroll-face'),
@@ -102,6 +104,34 @@
       fetchVaultData();
       updateFaceStatusUI();
     }
+    if (targetId === 'tab-audit') {
+      fetchAuditData();
+    }
+  }
+
+  async function fetchAuditData() {
+    try {
+      const audit = await sendToBG('GET_AUDIT_DATA');
+      if (audit) {
+        renderAudit(audit);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch audit data:', err);
+    }
+  }
+
+  function renderAudit(audit) {
+    if (!audit) return;
+    if (audit.sanitizedImage && els.auditMaskedImg && els.auditImageContainer) {
+      els.auditMaskedImg.src = audit.sanitizedImage;
+      els.auditImageContainer.style.display = 'block';
+    }
+    if (els.auditLocal) {
+      els.auditLocal.textContent = audit.localText || 'No PII detected locally.';
+    }
+    if (els.auditCloud) {
+      els.auditCloud.textContent = audit.cloudSummary || audit.cloudText || 'No payload generated.';
+    }
   }
 
   // ── Agent Execution Handlers ───────────────────────────────────────
@@ -135,8 +165,7 @@
       }
 
       if (result.audit) {
-        els.auditLocal.textContent = result.audit.localText || 'No text found';
-        els.auditCloud.textContent = result.audit.cloudText || 'No payload generated';
+        renderAudit(result.audit);
       }
 
       if (result.error) {

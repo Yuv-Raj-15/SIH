@@ -23,8 +23,8 @@ var RedactionEngine = (() => {
       labelColor = '#ffffff',
       labelBgColor = 'rgba(248, 113, 113, 0.85)',
       drawLabels = true,
-      quality = 0.70,
-      maxWidth = 1280,
+      quality = 0.55,
+      maxWidth = 800,
     } = options;
 
     // Load the image

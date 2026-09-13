@@ -16,7 +16,8 @@ var DOMAnalyzer = (() => {
     '[role="textbox"]', '[role="combobox"]', '[role="searchbox"]', '[role="option"]',
     '[contenteditable="true"]', '[contenteditable=""]', '[contenteditable]',
     '[onclick]', '[tabindex]:not([tabindex="-1"])',
-    '[aria-label]', '[title]'
+    '[aria-label]', '[title]',
+    '.monaco-editor', '.ace_editor', '[data-track-load="code_editor"]', '[data-e2e-locator]'
   ].join(', ');
 
   // Elements to skip
@@ -254,6 +255,9 @@ var DOMAnalyzer = (() => {
 
   function _inferRole(el) {
     const tag = el.tagName.toLowerCase();
+    if (el.classList.contains('monaco-editor') || el.closest('.monaco-editor') || el.hasAttribute('data-track-load')) {
+      return 'code-editor';
+    }
     if (tag === 'a') return 'link';
     if (tag === 'button') return 'button';
     if (tag === 'input') {
@@ -283,6 +287,17 @@ var DOMAnalyzer = (() => {
   }
 
   function _buildSelector(el) {
+    // 1. Data-e2e-locator (e.g. LeetCode buttons)
+    if (el.hasAttribute('data-e2e-locator')) {
+      return `${el.tagName.toLowerCase()}[data-e2e-locator="${el.getAttribute('data-e2e-locator')}"]`;
+    }
+    if (el.hasAttribute('data-cy')) {
+      return `${el.tagName.toLowerCase()}[data-cy="${el.getAttribute('data-cy')}"]`;
+    }
+    if (el.classList.contains('monaco-editor')) {
+      return '.monaco-editor';
+    }
+
     if (el.id) {
       if (typeof CSS !== 'undefined' && CSS.escape) {
         return '#' + CSS.escape(el.id);

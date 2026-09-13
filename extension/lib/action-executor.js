@@ -11,12 +11,53 @@ var ActionExecutor = (() => {
   // Track executed actions for the log
   const _actionLog = [];
 
+  function _dismissCommonOverlays() {
+    try {
+      // 1. Common cookie / consent accept buttons
+      const cookieSelectors = [
+        '#onetrust-accept-btn-handler',
+        '#accept-cookie-notification',
+        'button[id*="cookie" i][id*="accept" i]',
+        'button[class*="cookie" i][class*="accept" i]',
+        'button[aria-label*="accept all" i]',
+        'button[aria-label*="agree" i]',
+        '.cc-btn.cc-allow',
+        '.js-cookie-consent-agree'
+      ];
+      for (const sel of cookieSelectors) {
+        const btn = document.querySelector(sel);
+        if (btn && typeof btn.click === 'function') {
+          btn.click();
+          break;
+        }
+      }
+
+      // 2. Common promo / newsletter dismiss buttons
+      const modalCloseSelectors = [
+        'button[aria-label="Close" i]',
+        'button[aria-label="Dismiss" i]',
+        'button.modal-close',
+        'button.popup-close',
+        '[data-dismiss="modal"]'
+      ];
+      for (const sel of modalCloseSelectors) {
+        try {
+          const btn = document.querySelector(sel);
+          if (btn && typeof btn.click === 'function' && btn.offsetParent !== null) {
+            btn.click();
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
   /**
    * Execute a list of actions sequentially.
    * @param {Array<object>} actions - Array of action objects
    * @returns {Promise<Array<object>>} Results for each action
    */
   async function executeActions(actions) {
+    _dismissCommonOverlays();
     const results = [];
 
     for (let i = 0; i < actions.length; i++) {
@@ -27,7 +68,7 @@ var ActionExecutor = (() => {
 
       // Brief delay between actions for visual feedback and DOM updates
       if (i < actions.length - 1) {
-        await _delay(action.delayAfter || 500);
+        await _delay(action.delayAfter || 100);
       }
     }
 
@@ -180,13 +221,13 @@ var ActionExecutor = (() => {
     if (!el) return { success: false, error: `Element not found: ${action.selector || action.elementIndex}` };
 
     _highlightElement(el, 'click');
-    await _delay(150);
+    await _delay(40);
 
     // Scroll into view if needed
     try {
       el.scrollIntoView({ behavior: 'auto', block: 'center' });
     } catch {}
-    await _delay(100);
+    await _delay(30);
 
     // Try focusing
     try { el.focus(); } catch {}
@@ -214,6 +255,14 @@ var ActionExecutor = (() => {
       buttons: 0
     };
 
+    // If element is an anchor or inside an anchor, ensure it opens in the same tab
+    const anchor = el.tagName.toLowerCase() === 'a' ? el : el.closest('a');
+    if (anchor) {
+      if (anchor.target === '_blank') {
+        anchor.target = '_self';
+      }
+    }
+
     // Full pointer and mouse sequence for React, Angular, Gmail, Twitter
     el.dispatchEvent(new PointerEvent('pointerdown', downOpts));
     el.dispatchEvent(new MouseEvent('mousedown', downOpts));
@@ -238,6 +287,25 @@ var ActionExecutor = (() => {
     const parentBtn = el.closest('button, [role="button"], a');
     if (parentBtn && parentBtn !== el) {
       try { parentBtn.click(); } catch {}
+    }
+
+    // If inside a form (e.g. Amazon Add to Cart form), ensure form is submitted
+    const parentForm = el.closest('form');
+    if (parentForm && (el.getAttribute('type') === 'submit' || /cart|buy|submit/i.test(el.id + el.className + (el.getAttribute('name') || '')))) {
+      try {
+        parentForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      } catch {}
+    }
+
+    // If anchor has a valid navigation href, guarantee same-tab navigation if synthetic click doesn't navigate
+    if (anchor && anchor.href && !anchor.href.startsWith('javascript:') && !anchor.href.endsWith('#')) {
+      const hrefBefore = window.location.href;
+      setTimeout(() => {
+        if (window.location.href === hrefBefore && !document.hidden) {
+          console.log('[ActionExecutor] Forcing same-tab navigation to anchor href:', anchor.href);
+          window.location.href = anchor.href;
+        }
+      }, 250);
     }
 
     // If element is an empty password input, automatically populate it from vault
@@ -285,6 +353,9 @@ var ActionExecutor = (() => {
     }
   }
 
+  // Set of recently typed large payloads to prevent duplicate pasting loops
+  const _recentTypeHistory = [];
+
   async function _actionType(action) {
     const el = _findElement(action);
     if (!el) return { success: false, error: `Element not found: ${action.selector || action.elementIndex}` };
@@ -292,8 +363,17 @@ var ActionExecutor = (() => {
     // Resolve value locally from Reversible Token Map or Encrypted Vault (Zero PII to cloud!)
     const text = await _resolveVaultValue(el, action.value || action.text || '');
 
+    // Anti-repetition loop guard: if identical long text or code was already typed into this target, skip
+    const actionKey = `${action.selector || action.elementIndex}::${text.trim()}`;
+    if (text.length > 25 && _recentTypeHistory.includes(actionKey)) {
+      console.warn('[ActionExecutor] Anti-repetition guard: solution/text already typed into this editor. Skipping duplicate typing.');
+      return { success: true, description: `Solution already typed in ${action.selector || 'editor'}. Skipping duplicate.` };
+    }
+    _recentTypeHistory.push(actionKey);
+    if (_recentTypeHistory.length > 10) _recentTypeHistory.shift();
+
     _highlightElement(el, 'type');
-    await _delay(150);
+    await _delay(40);
 
     try {
       el.scrollIntoView({ behavior: 'auto', block: 'center' });
@@ -302,42 +382,90 @@ var ActionExecutor = (() => {
       el.focus();
     } catch {}
 
+    // Check if targeting a code editor (Monaco Editor / LeetCode / Ace / CodeMirror)
+    const isCodeEditor = (
+      el.closest('.monaco-editor') ||
+      el.classList.contains('.monaco-editor') ||
+      el.closest('.ace_editor') ||
+      el.closest('.CodeMirror') ||
+      /code-area|monaco|editor/i.test((el.className || '') + ' ' + (action.selector || ''))
+    );
+
     const isContentEditable = el.isContentEditable ||
       el.getAttribute('contenteditable') === 'true' ||
       el.getAttribute('contenteditable') === '';
 
-    // Clear existing value if requested
-    if (action.clear !== false) {
+    // Specialized handling for Code Editors & Long Text (Clean single-shot replacement)
+    if (isCodeEditor || text.length > 60 || text.includes('\n')) {
+      const targetTextarea = el.closest('.monaco-editor')?.querySelector('textarea.inputarea') ||
+        el.querySelector('textarea.inputarea') ||
+        (el.tagName === 'TEXTAREA' ? el : null);
+
+      const focusTarget = targetTextarea || el;
+      try { focusTarget.focus(); } catch {}
+
+      // Cleanly replace existing content using selectAll + insertText
+      try {
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, text);
+      } catch {}
+
       if (isContentEditable) {
-        el.innerText = '';
+        el.innerText = text;
+      } else if (targetTextarea) {
+        _setNativeValue(targetTextarea, text);
+        targetTextarea.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        targetTextarea.dispatchEvent(new Event('change', { bubbles: true }));
       } else {
-        _setNativeValue(el, '');
+        _setNativeValue(el, text);
       }
       el.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
-    // Type character by character with native setter & events for framework compatibility
-    let current = '';
-    for (let i = 0; i < text.length; i++) {
-      current += text[i];
-      if (isContentEditable) {
-        el.innerText = current;
-      } else {
-        _setNativeValue(el, current);
-      }
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text[i], inputType: 'insertText' }));
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: text[i], bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keypress', { key: text[i], bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: text[i], bubbles: true }));
-      await _delay(15 + Math.random() * 20);
-    }
-
-    if (isContentEditable) {
-      el.innerText = text;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      await _delay(50);
     } else {
-      _setNativeValue(el, text);
+      // Standard input/text typing
+      if (action.clear !== false) {
+        if (isContentEditable) {
+          el.innerText = '';
+        } else {
+          _setNativeValue(el, '');
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      if (text.length > 15) {
+        // High-speed native input injection for queries & values
+        if (isContentEditable) {
+          el.innerText = text;
+        } else {
+          _setNativeValue(el, text);
+        }
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        // Fast character typing with minimal jitter
+        let current = '';
+        for (let i = 0; i < text.length; i++) {
+          current += text[i];
+          if (isContentEditable) {
+            el.innerText = current;
+          } else {
+            _setNativeValue(el, current);
+          }
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, data: text[i], inputType: 'insertText' }));
+          el.dispatchEvent(new KeyboardEvent('keydown', { key: text[i], bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keypress', { key: text[i], bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keyup', { key: text[i], bubbles: true }));
+          await _delay(2 + Math.random() * 3);
+        }
+        if (isContentEditable) {
+          el.innerText = text;
+        } else {
+          _setNativeValue(el, text);
+        }
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     }
-    el.dispatchEvent(new Event('change', { bubbles: true }));
 
     // Auto-fill adjacent empty password field if user just typed a login / email
     const elInputType = (el.getAttribute('type') || '').toLowerCase();
@@ -370,7 +498,7 @@ var ActionExecutor = (() => {
     );
 
     if (isSearchInput) {
-      await _delay(250);
+      await _delay(50);
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
       el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
       el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
@@ -531,8 +659,13 @@ var ActionExecutor = (() => {
   }
 
   async function _actionNavigate(action) {
-    const url = action.url || action.value;
+    let url = (action.url || action.value || '').trim();
     if (!url) return { success: false, error: 'No URL provided for navigate action' };
+
+    // Prepend https:// if protocol is missing and not browser internal
+    if (!/^https?:\/\//i.test(url) && !url.startsWith('chrome://')) {
+      url = `https://${url}`;
+    }
 
     window.location.href = url;
     return { success: true, description: `Navigating to ${url}` };
@@ -631,7 +764,7 @@ var ActionExecutor = (() => {
       }
     }
 
-    // 2. Try CSS selector with safe error handling
+    // 2. Try CSS selector with safe error handling and nth-of-type repair
     if (action.selector && typeof action.selector === 'string') {
       const sel = action.selector.trim();
       try {
@@ -652,7 +785,28 @@ var ActionExecutor = (() => {
         }
       }
 
-      // If selector has exact aria-label match, also try substring match (Gmail unicode support)
+      // Repair :nth-of-type on complex selectors where CSS tag filter fails
+      if (sel.includes(':nth-of-type(')) {
+        try {
+          const nthMatch = sel.match(/^(.*?):nth-of-type\((\d+)\)(.*)$/);
+          if (nthMatch) {
+            const base = nthMatch[1].trim();
+            const nIdx = parseInt(nthMatch[2], 10) - 1;
+            const rest = nthMatch[3] ? nthMatch[3].trim() : '';
+            const allBase = document.querySelectorAll(base);
+            if (allBase && allBase[nIdx]) {
+              if (rest) {
+                const sub = allBase[nIdx].querySelector(rest);
+                if (sub) return sub;
+              } else {
+                return allBase[nIdx];
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // If selector has exact aria-label match, also try substring match
       if (sel.includes('[aria-label="')) {
         try {
           const looseSel = sel.replace(/\[aria-label="([^"]+)"\]/, '[aria-label*="$1"]');
@@ -662,7 +816,65 @@ var ActionExecutor = (() => {
       }
     }
 
-    // 3. Match by ARIA label or title if specified in description/selector
+    // 3. E-Commerce Semantic Fallbacks for Shopping & Checkout
+    const descLower = (action.description || '').toLowerCase();
+    const selLower = (action.selector || '').toLowerCase();
+    const combinedLower = `${descLower} ${selLower}`;
+
+    if (/add to cart|add_to_cart|addtocart/i.test(combinedLower)) {
+      const cartCandidate = document.querySelector(
+        'button#a-autoid-1-announce, button#a-autoid-2-announce, input[name="submit.addToCart"], ' +
+        'button[name="submit.addToCart"], button#add-to-cart-button, input#add-to-cart-button, ' +
+        '.s-add-to-cart-button, [data-action="add-to-cart"], button[aria-label*="Add to cart" i]'
+      );
+      if (cartCandidate) return cartCandidate;
+    }
+
+    if (/proceed to checkout|proceed to buy|proceedtoretailcheckout/i.test(combinedLower)) {
+      const ptcCandidate = document.querySelector(
+        'input[name="proceedToRetailCheckout"], #attach-sidesheet-checkout-button, ' +
+        '#sc-buy-box-ptc-button input, input[name="proceedToCheckout"], a[href*="proceedToRetailCheckout"], ' +
+        'button:has-text("Proceed to checkout"), button:has-text("Proceed to Buy")'
+      );
+      if (ptcCandidate) return ptcCandidate;
+    }
+
+    if (/deliver to this address|use this address|shiptothisaddress/i.test(combinedLower)) {
+      const addrCandidate = document.querySelector(
+        'input[data-testid="Address_selectShipToThisAddress"], input[name="submissionURL"], ' +
+        '#shipToThisAddressButton, input[aria-labelledby*="shipToThisAddressButton"], ' +
+        'a[data-action="page-spinner-show"]'
+      );
+      if (addrCandidate) return addrCandidate;
+    }
+
+    if (/use this payment|payment method|continue with payment/i.test(combinedLower)) {
+      const payCandidate = document.querySelector(
+        'input[name="ppw-widgetEvent:SetPaymentPlanSelectContinueEvent"], input[name="continue-bottom"], ' +
+        '#payment-submit-button, input[name="ppw-widgetEvent:SelectPaymentMethodEvent"]'
+      );
+      if (payCandidate) return payCandidate;
+    }
+
+    if (/place your order|place order|confirm order|submit order|pay now/i.test(combinedLower)) {
+      const placeCandidate = document.querySelector(
+        'input[name="placeYourOrder1"], input[name="placeYourOrder2"], ' +
+        'button#placeYourOrder, button[name="placeYourOrder1"], input[value*="Place your order" i]'
+      );
+      if (placeCandidate) return placeCandidate;
+    }
+
+    if (/continue|next|proceed|submit|save|confirm|finish/i.test(combinedLower)) {
+      const ctaCandidate = document.querySelector(
+        'button[type="submit"], input[type="submit"], ' +
+        'button[id*="continue" i], button[id*="submit" i], button[id*="next" i], ' +
+        'button[name*="continue" i], button[name*="submit" i], ' +
+        'input[name*="continue" i], input[name*="submit" i]'
+      );
+      if (ctaCandidate) return ctaCandidate;
+    }
+
+    // 4. Match by ARIA label or title if specified in description/selector
     if (action.description || action.selector) {
       const combined = `${action.selector || ''} ${action.description || ''}`;
       const ariaMatch = combined.match(/aria-label=["']?([^"'\]]+)["']?/i);
@@ -672,7 +884,6 @@ var ActionExecutor = (() => {
       }
 
       // Check common keywords from description
-      const descLower = (action.description || '').toLowerCase();
       if (descLower) {
         const ariaEls = document.querySelectorAll('[aria-label], [title], [placeholder], [name]');
         for (const el of ariaEls) {
@@ -688,7 +899,7 @@ var ActionExecutor = (() => {
       }
     }
 
-    // 4. Try element index from DOM collection
+    // 5. Try element index from DOM collection
     if (action.elementIndex !== undefined && action.elementIndex !== null) {
       const idx = parseInt(action.elementIndex, 10);
       if (!isNaN(idx)) {
@@ -697,10 +908,21 @@ var ActionExecutor = (() => {
       }
     }
 
-    // 5. Try text content match
+    // 6. Try quoted text content match from description
+    const quoteMatch = (action.description || '').match(/"([^"]{3,80})"/);
+    if (quoteMatch) {
+      const targetSub = quoteMatch[1].toLowerCase().trim();
+      const candidates = document.querySelectorAll('button, a, input[type="submit"], [role="button"], [role="tab"], [role="menuitem"], h2 a');
+      for (const el of candidates) {
+        const elText = (el.textContent || '').toLowerCase().trim();
+        if (elText.includes(targetSub) || targetSub.includes(elText)) return el;
+      }
+    }
+
+    // 7. Try general text content match
     if (action.text || action.description) {
       const searchText = (action.text || action.description).toLowerCase().trim();
-      const candidates = document.querySelectorAll('button, a, input[type="submit"], [role="button"], [role="tab"], [role="menuitem"]');
+      const candidates = document.querySelectorAll('button, a, input[type="submit"], [role="button"], [role="tab"], [role="menuitem"], h2 a');
       for (const el of candidates) {
         const elText = (el.textContent || '').toLowerCase().trim();
         const aria = (el.getAttribute('aria-label') || '').toLowerCase().trim();

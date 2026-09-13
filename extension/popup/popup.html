@@ -178,21 +178,44 @@
 
     <!-- Tab: Zero-Leak Audit -->
     <section id="tab-audit" class="tab-pane">
-      <div class="info-box">
-        🔍 <strong>Live Zero-Leakage Audit for Active Page:</strong> Showing exact DOM fields detected locally vs sanitized tokens sent to cloud VLM.
+      <div class="info-box" style="margin-top: 4px;">
+        🛡️ <strong>Live Zero-Leakage Audit:</strong> On-device masked visual frame & encrypted tokens vs sanitized server context.
       </div>
       
       <div class="audit-grid">
+        <!-- Local Processing Column -->
         <div class="audit-col local-col">
-          <div class="audit-col-header">💻 Local Browser (Decrypted)</div>
+          <div class="audit-col-header">
+            <span>💻 Processed Locally</span>
+            <span class="badge badge-success">0 BYTES LEAKED</span>
+          </div>
           <div class="audit-content" id="audit-local">
-            <div class="placeholder-text">Run analysis to see DOM state...</div>
+            <!-- Masked Image Preview -->
+            <div id="audit-image-container" style="display: none; margin-bottom: 8px;">
+              <div class="audit-section-subhead">
+                🖼️ Masked Screenshot (Sent to AI):
+              </div>
+              <div class="audit-image-wrapper">
+                <img id="audit-masked-img" src="" alt="Masked Screenshot Preview">
+                <div class="audit-image-badge">🔒 Blacked Out / Blurred</div>
+              </div>
+            </div>
+            <div id="audit-local-text" class="audit-text-block">
+              <div class="placeholder-text">Run agent to see on-device masked data...</div>
+            </div>
           </div>
         </div>
+
+        <!-- Server Processing Column -->
         <div class="audit-col cloud-col">
-          <div class="audit-col-header">☁️ Cloud VLM Payload (Luna)</div>
+          <div class="audit-col-header">
+            <span>☁️ Server Context (Essential Info)</span>
+            <span class="badge badge-info">SANITIZED</span>
+          </div>
           <div class="audit-content" id="audit-cloud">
-             <div class="placeholder-text">Run analysis to see sanitized payload...</div>
+             <div id="audit-cloud-text" class="audit-text-block">
+               <div class="placeholder-text">Run agent to see sanitized server payload...</div>
+             </div>
           </div>
         </div>
       </div>

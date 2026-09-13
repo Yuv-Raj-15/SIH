@@ -59,7 +59,7 @@ class VLMClient:
         """Initialize OpenAI-compatible client."""
         try:
             from openai import OpenAI
-            kwargs = {"api_key": self.api_key}
+            kwargs = {"api_key": self.api_key, "timeout": 60.0}
             if self.base_url:
                 kwargs["base_url"] = self.base_url
             self._client = OpenAI(**kwargs)
@@ -96,7 +96,7 @@ class VLMClient:
             raise
 
     async def _call_ollama(self, system_prompt: str, user_prompt: str, image_base64: Optional[str]) -> str:
-        """Call Ollama API."""
+        """Call Ollama API with bounded context and prediction tokens for maximum speed."""
         import asyncio
 
         if not self._client:
@@ -106,23 +106,25 @@ class VLMClient:
             {"role": "system", "content": system_prompt},
         ]
 
-        # Build user message
+        # Build user message with downscaled image
         user_msg = {"role": "user", "content": user_prompt}
         if image_base64:
-            # Strip data URL prefix if present
-            raw_b64 = image_base64
-            if "," in raw_b64:
-                raw_b64 = raw_b64.split(",", 1)[1]
-            user_msg["images"] = [raw_b64]
+            optimized_b64 = self._prepare_ollama_image(image_base64)
+            if optimized_b64:
+                user_msg["images"] = [optimized_b64]
 
         messages.append(user_msg)
 
-        # Run synchronous Ollama call in thread pool
+        # Run synchronous Ollama call in thread pool with tight context window
         def _sync_call():
             return self._client.chat(
                 model=self.model,
                 messages=messages,
-                options={"temperature": 0.3, "num_predict": 2048},
+                options={
+                    "temperature": 0.1,
+                    "num_predict": 160,
+                    "num_ctx": 2048,
+                },
             )
 
         loop = asyncio.get_event_loop()
@@ -162,7 +164,7 @@ class VLMClient:
                 model=self.model,
                 messages=messages,
                 temperature=0.2,
-                max_tokens=4096,
+                max_tokens=600,
             )
             # Gemini supports response_format for JSON
             try:
@@ -192,7 +194,7 @@ class VLMClient:
         raise last_error  # All retries failed
 
     def _prepare_image_url(self, image_base64: str) -> str:
-        """Format and downscale image if necessary to optimize VLM latency."""
+        """Format and aggressively downscale image to optimize VLM latency and token overhead."""
         if not image_base64:
             return image_base64
         try:
@@ -200,33 +202,63 @@ class VLMClient:
             from PIL import Image
 
             raw_b64 = image_base64
-            prefix = "data:image/jpeg;base64,"
             if "," in raw_b64:
-                prefix, raw_b64 = raw_b64.split(",", 1)
-                prefix += ","
+                _, raw_b64 = raw_b64.split(",", 1)
 
             img_bytes = base64.b64decode(raw_b64)
-            # Only compress if large (>100KB)
-            if len(img_bytes) > 100_000:
-                img = Image.open(BytesIO(img_bytes))
-                max_dim = 1280
-                if img.width > max_dim or img.height > max_dim:
-                    scale = min(max_dim / img.width, max_dim / img.height)
-                    new_size = (int(img.width * scale), int(img.height * scale))
-                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+            img = Image.open(BytesIO(img_bytes))
 
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
+            # Fast downscale: Max dimension 768px for lightning-fast vision tokenization
+            max_dim = 768
+            if img.width > max_dim or img.height > max_dim:
+                scale = min(max_dim / img.width, max_dim / img.height)
+                new_size = (int(img.width * scale), int(img.height * scale))
+                img = img.resize(new_size, Image.Resampling.BILINEAR)
 
-                buf = BytesIO()
-                img.save(buf, format="JPEG", quality=70)
-                compressed_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-                return f"data:image/jpeg;base64,{compressed_b64}"
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
 
-            return image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=55, optimize=True)
+            compressed_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            return f"data:image/jpeg;base64,{compressed_b64}"
         except Exception as e:
             logger.warning(f"Image optimization skipped: {e}")
             return image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
+
+    def _prepare_ollama_image(self, image_base64: str) -> Optional[str]:
+        """Format and downscale image specifically for Ollama local VRAM limits (max 512px)."""
+        if not image_base64:
+            return None
+        try:
+            from io import BytesIO
+            from PIL import Image
+
+            raw_b64 = image_base64
+            if "," in raw_b64:
+                _, raw_b64 = raw_b64.split(",", 1)
+
+            img_bytes = base64.b64decode(raw_b64)
+            img = Image.open(BytesIO(img_bytes))
+
+            # Fast downscale: Max dimension 512px for low VRAM consumption on 4GB GPUs
+            max_dim = 512
+            if img.width > max_dim or img.height > max_dim:
+                scale = min(max_dim / img.width, max_dim / img.height)
+                new_size = (int(img.width * scale), int(img.height * scale))
+                img = img.resize(new_size, Image.Resampling.BILINEAR)
+
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=50, optimize=True)
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+        except Exception as e:
+            logger.warning(f"Ollama image preparation skipped: {e}")
+            if "," in image_base64:
+                return image_base64.split(",", 1)[1]
+            return image_base64
 
     def health_check(self) -> dict:
         """Check if the VLM backend is reachable."""
