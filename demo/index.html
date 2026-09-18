@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrivacyVision — Autonomous Privacy-Preserving Web Agent</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- =====================================================================
+       1. Topbar Navigation (Matching User's Portfolio Navbar)
+       ===================================================================== -->
+  <header class="demo-topbar">
+    <a href="#" class="brand">
+      <span class="brand-name">YUVRAJ RAUNIYAR</span>
+      <span class="brand-badge">PRIVACYVISION</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#sandboxes" class="nav-link">Sandboxes</a>
+      <a href="#about" class="nav-link">Architecture</a>
+      <a href="#capabilities" class="nav-link">Capabilities</a>
+      <a href="#contact" class="nav-link">Get in touch</a>
+      <a href="#sandboxes" class="nav-btn-pill">Test Agent ↗</a>
+    </nav>
+  </header>
+
+  <!-- =====================================================================
+       2. Hero Section (Directly Matching Screenshot 1)
+       ===================================================================== -->
+  <section class="hero-section">
+    <div class="hero-status-pill">
+      <span class="hero-status-dot"></span>
+      <span>• Currently Running Dual-AI Agent & On-Device Masking</span>
+    </div>
+
+    <h1 class="hero-title">PRIVACYVISION</h1>
+
+    <div class="hero-subtitle-row">
+      <span id="hero-subtitle-text">Zero-Leak Autonomous Web Agent</span>
+      <span class="typing-cursor">|</span>
+    </div>
+
+    <div class="hero-actions">
+      <a href="#sandboxes" class="btn-pill-primary">Test Live Agent ↗</a>
+      <a href="#about" class="btn-pill-outline">System Architecture ↗</a>
+    </div>
+
+    <!-- Tech Stack I've worked with (Screenshot 1 Match) -->
+    <div class="tech-stack-section">
+      <span class="tech-stack-title">Tech Stack & AI Engines</span>
+      <div class="tech-stack-row">
+        
+        <div class="tech-badge-item" title="Python 3.11 Backend">
+          <div class="tech-icon-circle">🐍</div>
+          <span class="tech-badge-label">Python</span>
+        </div>
+
+        <div class="tech-badge-item" title="FastAPI High-Performance Server">
+          <div class="tech-icon-circle">⚡</div>
+          <span class="tech-badge-label">FastAPI</span>
+        </div>
+
+        <div class="tech-badge-item" title="Dual GPT-5.6-Luna Vision & Decision Models">
+          <div class="tech-icon-circle">🧠</div>
+          <span class="tech-badge-label">GPT-5.6-Luna</span>
+        </div>
+
+        <div class="tech-badge-item" title="Chrome Extension MV3">
+          <div class="tech-icon-circle">🧩</div>
+          <span class="tech-badge-label">Chrome MV3</span>
+        </div>
+
+        <div class="tech-badge-item" title="Vanilla JavaScript Engine">
+          <div class="tech-icon-circle">JS</div>
+          <span class="tech-badge-label">JavaScript</span>
+        </div>
+
+        <div class="tech-badge-item" title="Local NER & Regex Masking">
+          <div class="tech-icon-circle">🛡️</div>
+          <span class="tech-badge-label">Local NER</span>
+        </div>
+
+        <div class="tech-badge-item" title="AES-256-GCM Secure Vault">
+          <div class="tech-icon-circle">🔐</div>
+          <span class="tech-badge-label">AES-256</span>
+        </div>
+
+        <div class="tech-badge-item" title="Pure Classic CSS Design">
+          <div class="tech-icon-circle">🎨</div>
+          <span class="tech-badge-label">CSS3</span>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       3. Three-Column Stat Bar (Directly Matching Screenshot 3 & 4)
+       ===================================================================== -->
+  <div class="stat-bar-container">
+    <div class="stat-bar-grid">
+      
+      <div class="stat-col">
+        <span class="stat-header">AI ENGINE 1</span>
+        <span class="stat-value">🧠 GPT-5.6-Luna (Visual Perception)</span>
+      </div>
+
+      <div class="stat-col">
+        <span class="stat-header">LOCAL SHIELD</span>
+        <span class="stat-value">🛡️ 0 Bytes Leaked (On-Device Memory)</span>
+      </div>
+
+      <div class="stat-col">
+        <span class="stat-header">AI ENGINE 2</span>
+        <span class="stat-value">⚡ GPT-5.6-Luna (Tactical Decision)</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       4. Interactive Sandboxes Container
+       ===================================================================== -->
+  <main class="demo-container" id="sandboxes">
+    
+    <!-- Sub-navigation tabs for testing scenarios -->
+    <div class="portal-tabs-nav">
+      <div class="portal-tabs-group">
+        <button class="portal-tab-btn active" data-portal="portal-bank">💳 SecureBank Transfer</button>
+        <button class="portal-tab-btn" data-portal="portal-login">🔐 Vault Login Portal</button>
+        <button class="portal-tab-btn" data-portal="portal-shop">🛒 NexusShop E-Commerce</button>
+        <button class="portal-tab-btn" data-portal="portal-pii">👤 Identity & PII Vault</button>
+      </div>
+      <button class="btn-cookie-trigger" id="btn-trigger-cookie">🍪 Trigger Cookie Overlay</button>
+    </div>
+
+    <!-- Cookie Consent Simulator (Obstacle Testing) -->
+    <div id="cookie-consent-overlay" class="cookie-banner" style="display: none;">
+      <div class="cookie-content">
+        <div class="cookie-text">
+          <strong>🍪 Simulated Cookie Consent Overlay</strong>
+          <p>This obstacle banner tests AI-1's visual reasoning: the agent detects and dismisses dialogs autonomously without hardcoded rules.</p>
+        </div>
+        <div class="cookie-actions">
+          <button class="btn-pill-outline" id="btn-cookie-dismiss" style="padding: 6px 16px; font-size: 0.8rem;">Dismiss</button>
+          <button class="btn-pill-primary" id="btn-cookie-accept" sel="button#btn-cookie-accept" style="padding: 6px 16px; font-size: 0.8rem;">Accept Cookies ↗</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PORTAL 1: SECUREBANK TRANSFER -->
+    <section id="portal-bank" class="portal-view active">
+      
+      <div class="balance-card">
+        <div class="balance-left">
+          <span class="balance-label">Primary Savings Account</span>
+          <span class="account-number">A/C: •••• •••• •••• 4567 (HDFC Bank)</span>
+          <div class="balance-amount">₹1,45,280.50</div>
+        </div>
+        <div class="balance-badge">
+          <span class="hero-status-dot"></span> Active KYC Verified
+        </div>
+      </div>
+
+      <div class="hint-strip">
+        💡 <strong>Agent Test Scenario:</strong> Enter goal in extension: <em>"Fill transfer form and pay ₹25,000 to Rahul"</em>. 
+        Plaintext account numbers and transaction PINs are masked on-device before screenshots reach any AI model.
+      </div>
+
+      <div class="form-container" id="bank-form-section">
+        <div class="form-header">
+          <h2>Instant NEFT / IMPS Fund Transfer</h2>
+          <span class="badge-secure">Zero-Leak Guard Active</span>
+        </div>
+
+        <form id="fund-transfer-form" onsubmit="handleTransferSubmit(event)">
+          <div class="form-grid">
+            
+            <div class="form-group">
+              <label for="beneficiary-name">Beneficiary Name</label>
+              <input type="text" id="beneficiary-name" name="beneficiary" placeholder="e.g. Rahul Mehta" required sel="input#beneficiary-name">
+            </div>
+
+            <div class="form-group">
+              <label for="account-number">Beneficiary Account Number</label>
+              <input type="text" id="account-number" name="accountNumber" placeholder="e.g. 9876543210123456" required sel="input#account-number">
+            </div>
+
+            <div class="form-group">
+              <label for="ifsc-code">IFSC Code</label>
+              <input type="text" id="ifsc-code" name="ifsc" placeholder="e.g. HDFC0004567" required sel="input#ifsc-code">
+            </div>
+
+            <div class="form-group">
+              <label for="transfer-amount">Transfer Amount (₹)</label>
+              <input type="number" id="transfer-amount" name="amount" placeholder="e.g. 25000" min="1" max="100000" required sel="input#transfer-amount">
+            </div>
+
+            <div class="form-group">
+              <label for="transfer-remarks">Payment Purpose / Remarks</label>
+              <input type="text" id="transfer-remarks" name="remarks" placeholder="e.g. House Rent September" sel="input#transfer-remarks">
+            </div>
+
+            <div class="form-group">
+              <label for="security-pin">Transaction Security PIN (Masked)</label>
+              <input type="password" id="security-pin" name="upiPin" placeholder="Enter 6-digit PIN" maxlength="6" required sel="input#security-pin">
+              <span class="field-hint">🛡️ On-device model applies blackout rectangle over this field in canvas.</span>
+            </div>
+
+          </div>
+
+          <div class="form-footer">
+            <button type="submit" id="btn-transfer-submit" class="btn-pill-primary" sel="button#btn-transfer-submit">
+              Authorize & Pay ₹25,000 ↗
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Transfer Success Receipt -->
+      <div id="transfer-success-modal" class="receipt-card" style="display: none;">
+        <div class="receipt-icon">✓</div>
+        <h3>Transaction Successful</h3>
+        <p class="receipt-subtitle">Reference ID: <strong id="rec-ref">SB-89217491</strong></p>
+        
+        <div class="receipt-details">
+          <div class="receipt-row">
+            <span>Paid To:</span>
+            <strong id="rec-name">Rahul Mehta</strong>
+          </div>
+          <div class="receipt-row">
+            <span>Amount Debited:</span>
+            <strong id="rec-amount" class="text-emerald">₹25,000.00</strong>
+          </div>
+          <div class="receipt-row">
+            <span>Privacy Guarantee:</span>
+            <span class="badge-secure">Zero Plaintext Leaked</span>
+          </div>
+        </div>
+
+        <button class="btn-pill-outline" onclick="resetBankForm()">Make Another Transfer ↗</button>
+      </div>
+
+    </section>
+
+    <!-- PORTAL 2: NEXUSSHOP E-COMMERCE -->
+    <section id="portal-shop" class="portal-view">
+      
+      <div class="shop-bar">
+        <div class="search-box">
+          <input type="text" id="shop-search-input" placeholder="Search products, shoes, earbuds..." sel="input#shop-search-input">
+          <button id="btn-shop-search" class="btn-shop-search" sel="button#btn-shop-search">Search ↗</button>
+        </div>
+        <button id="btn-open-cart" class="btn-cart" sel="button#btn-open-cart">
+          Cart (<span id="cart-counter">0</span>)
+        </button>
+      </div>
+
+      <div class="catalog-grid">
+        
+        <div class="product-card" id="prod-shoes">
+          <div class="product-badge">Top Seller</div>
+          <div class="product-image-box">👟</div>
+          <h3 class="product-title">Quantum Velocity Running Shoes</h3>
+          <p class="product-desc">Carbon-fiber responsive sole with breathable recycled knit mesh.</p>
+          <div class="product-price-row">
+            <span class="product-price">₹4,999</span>
+            <span class="product-orig-price">₹7,999</span>
+          </div>
+          <button class="btn-add-cart" id="btn-add-shoes" onclick="addToCart('Quantum Velocity Running Shoes', 4999)" sel="button#btn-add-shoes">
+            Add to Cart ↗
+          </button>
+        </div>
+
+        <div class="product-card" id="prod-buds">
+          <div class="product-badge">New Launch</div>
+          <div class="product-image-box">🎧</div>
+          <h3 class="product-title">AeroFit Pro Wireless Earbuds</h3>
+          <p class="product-desc">Active Noise Cancellation with 48-hour ultra long battery life.</p>
+          <div class="product-price-row">
+            <span class="product-price">₹2,499</span>
+            <span class="product-orig-price">₹4,499</span>
+          </div>
+          <button class="btn-add-cart" id="btn-add-buds" onclick="addToCart('AeroFit Pro Wireless Earbuds', 2499)" sel="button#btn-add-buds">
+            Add to Cart ↗
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Shopping Cart Drawer -->
+      <div id="cart-drawer" class="cart-drawer" style="display: none;">
+        <div class="drawer-header">
+          <h3>Shopping Cart</h3>
+          <button class="btn-close-drawer" onclick="closeCart()">&times;</button>
+        </div>
+        <div id="cart-items-list" class="cart-items-list"></div>
+        <div class="cart-summary">
+          <div class="summary-row">
+            <span>Subtotal:</span>
+            <strong id="cart-total-val">₹0</strong>
+          </div>
+          <button id="btn-proceed-checkout" class="btn-pill-primary" onclick="showCheckout()" sel="button#btn-proceed-checkout">
+            Proceed to Checkout ↗
+          </button>
+        </div>
+      </div>
+
+      <!-- Checkout View -->
+      <div id="checkout-view" class="checkout-container" style="display: none;">
+        <h3>Shipping & Payment Review</h3>
+        <div class="checkout-grid">
+          <div class="address-box">
+            <h4>Saved Delivery Address</h4>
+            <p><strong>Priya Sharma</strong><br>Flat 402, Cyber Heights, Sector 62<br>Noida, Uttar Pradesh — 201309<br>Phone: +91 98765 43210</p>
+            <button id="btn-select-address" class="btn-pill-outline" onclick="confirmAddress()" sel="button#btn-select-address">
+              Deliver to this Address ↗
+            </button>
+          </div>
+          <div class="payment-box">
+            <h4>Payment Selection</h4>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #ffffff;">
+              <input type="radio" name="payment" value="saved-card" checked>
+              <span>Saved HDFC Visa Card (•••• 5678)</span>
+            </label>
+            <button id="btn-place-order" class="btn-pill-primary" onclick="placeOrder()" sel="button#btn-place-order" style="margin-top: 18px; width: 100%;">
+              Place Order & Confirm Purchase ↗
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Order Confirmation Screen -->
+      <div id="order-success-screen" class="receipt-card" style="display: none;">
+        <div class="receipt-icon">🎉</div>
+        <h3>Order Confirmed!</h3>
+        <p class="receipt-subtitle">Thank you for your order! Your package is scheduled for delivery.</p>
+        <p>Order Reference: <strong id="order-ref">NX-99214</strong></p>
+        <button class="btn-pill-outline" onclick="resetShop()" style="margin-top: 16px;">Continue Shopping ↗</button>
+      </div>
+
+    </section>
+
+    <!-- PORTAL 3: IDENTITY & PII LAB -->
+    <section id="portal-pii" class="portal-view">
+      
+      <div class="pii-hero">
+        <h2>On-Device PII & Data Protection Testbench</h2>
+        <p>High-risk synthetic data entities verified against local regex and canvas redaction filters.</p>
+      </div>
+
+      <div class="pii-grid">
+        
+        <div class="pii-card">
+          <div class="pii-header">
+            <span>Sensitive Identity Records</span>
+            <span class="badge-blackout">Redacted</span>
+          </div>
+          <div class="pii-body">
+            <div class="pii-field">
+              <span class="pii-label">Full Legal Name:</span>
+              <span class="pii-val">Priya Sharma</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">Email Address:</span>
+              <span class="pii-val">priya.sharma@gmail.com</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">Mobile Number:</span>
+              <span class="pii-val">+91 98765 43210</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">Aadhaar Card No:</span>
+              <span class="pii-val">4592 8193 0184</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">PAN Tax Identifier:</span>
+              <span class="pii-val">ABCDE1234F</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pii-card">
+          <div class="pii-header">
+            <span>Financial & Vault Data</span>
+            <span class="badge-blackout">Airtight</span>
+          </div>
+          <div class="pii-body">
+            <div class="pii-field">
+              <span class="pii-label">Credit Card:</span>
+              <span class="pii-val">4532 7890 1234 5678</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">CVV Security Code:</span>
+              <span class="pii-val">789</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">UPI VPA Handle:</span>
+              <span class="pii-val">priya.sharma@oksbi</span>
+            </div>
+            <div class="pii-field">
+              <span class="pii-label">Secret Master Password:</span>
+              <span class="pii-val">MyS3cur3P@ss!2026</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- PORTAL 4: VAULT LOGIN & AUTHENTICATION SANDBOX -->
+    <section id="portal-login" class="portal-view">
+      <div class="hint-strip">
+        💡 <strong>Vault Extraction Test:</strong> Instruct PrivacyVision: <em>"Login to portal using saved vault credentials"</em>. 
+        When the agent sees this login form with empty username and password fields, it automatically extracts and injects your saved credentials from the on-device vault!
+      </div>
+
+      <div class="form-container" id="login-form-section" style="max-width: 520px; margin: 0 auto;">
+        <div class="form-header">
+          <h2>Secure Account Portal Login</h2>
+          <span class="badge-secure">Vault Auto-Extract Active</span>
+        </div>
+
+        <form id="portal-auth-form" onsubmit="handleLoginSubmit(event)">
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="login-username">Email / Username</label>
+            <input type="text" id="login-username" name="username" placeholder="Enter username or email" required sel="input#login-username">
+          </div>
+
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="login-password">Master Password</label>
+            <input type="password" id="login-password" name="password" placeholder="••••••••" required sel="input#login-password">
+            <span class="field-hint">🛡️ Auto-extracted on-device from AES-256-GCM vault. Zero plaintext sent to cloud.</span>
+          </div>
+
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-muted); cursor: pointer;">
+              <input type="checkbox" id="login-remember" checked>
+              <span>Keep session authenticated</span>
+            </label>
+            <a href="#" style="font-size: 0.8rem; color: var(--text-muted); text-decoration: none;" onclick="return false;">Forgot password?</a>
+          </div>
+
+          <div class="form-footer" style="justify-content: stretch;">
+            <button type="submit" id="btn-login-submit" class="btn-pill-primary" style="width: 100%; justify-content: center;" sel="button#btn-login-submit">
+              Sign In to Account ↗
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Login Success Modal -->
+      <div id="login-success-modal" class="receipt-card" style="display: none; max-width: 480px; margin: 0 auto;">
+        <div class="receipt-icon">✓</div>
+        <h3>Authentication Successful</h3>
+        <p class="receipt-subtitle">Authenticated with saved credentials from local vault</p>
+        <div class="receipt-details">
+          <div class="receipt-row">
+            <span>User Account:</span>
+            <strong id="logged-user-name">priya.sharma@gmail.com</strong>
+          </div>
+          <div class="receipt-row">
+            <span>Security Status:</span>
+            <span class="badge-secure">Zero Password Leaked</span>
+          </div>
+          <div class="receipt-row">
+            <span>Session Auth:</span>
+            <strong class="text-emerald">Authorized via Vault</strong>
+          </div>
+        </div>
+        <button class="btn-pill-outline" onclick="resetLoginForm()">Log Out / Test Again ↗</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =====================================================================
+       5. About PrivacyVision & Profile (Directly Matching Screenshot 2 & 4)
+       ===================================================================== -->
+  <section class="about-section" id="about">
+    <div class="section-heading-row">
+      <h2 class="section-title">About PrivacyVision !</h2>
+      <span class="section-subtitle-tag">• Dual-AI Zero-Leak Architecture</span>
+    </div>
+
+    <div class="about-grid">
+      
+      <div class="about-text-col">
+        <p class="about-para">
+          Hi, I’m <strong>Yuvraj</strong> — developer of PrivacyVision. I created this system to solve the critical privacy problem inherent in modern vision-based browser agents: sending full unredacted desktop screens and sensitive personal data to external cloud models.
+        </p>
+
+        <p class="about-para">
+          PrivacyVision splits agentic intelligence into a <strong>Dual-AI Pipeline</strong> powered by two <code>gpt-5.6-luna</code> engines:
+          <strong>AI-1 (Visual Perception)</strong> diagnoses page layouts and clears obstacles, while 
+          <strong>AI-2 (Tactical Decision)</strong> maps strategic goals into precise micro-actions. 
+          All sensitive fields, credentials, and identity attributes are masked strictly inside browser memory before any frame leaves your device.
+        </p>
+
+        <div style="margin-top: 10px;">
+          <a href="#contact" class="btn-pill-outline">Explore Capabilities ↗</a>
+        </div>
+
+        <!-- Timeline / Ledger (Screenshot 3 & 4 Match) -->
+        <div class="timeline-card">
+          <div class="timeline-header">Agent Execution Lifecycle</div>
+          <div class="timeline-list">
+            
+            <div class="timeline-item">
+              <span class="timeline-dot dot-pink"></span>
+              <span class="timeline-year">Stage 1</span>
+              <span class="timeline-desc">Local NER & solid canvas blackouts over PINs, cards, and passwords.</span>
+            </div>
+
+            <div class="timeline-item">
+              <span class="timeline-dot dot-purple"></span>
+              <span class="timeline-year">Stage 2</span>
+              <span class="timeline-desc">On-device AES-256-GCM vault token replacement in DOM snapshot.</span>
+            </div>
+
+            <div class="timeline-item">
+              <span class="timeline-dot dot-green"></span>
+              <span class="timeline-year">Stage 3</span>
+              <span class="timeline-desc">AI-1 (Reasoning Model) evaluates visual state & clears banners.</span>
+            </div>
+
+            <div class="timeline-item">
+              <span class="timeline-dot dot-blue"></span>
+              <span class="timeline-year">Stage 4</span>
+              <span class="timeline-desc">AI-2 (Decision Model) computes exact CSS selectors & micro-actions.</span>
+            </div>
+
+            <div class="timeline-item">
+              <span class="timeline-dot dot-white"></span>
+              <span class="timeline-year">Stage 5</span>
+              <span class="timeline-desc">Content script executes DOM actions with zero cloud plaintext retention.</span>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Floating White Profile Card (Screenshot 4 Match) -->
+      <div class="portfolio-profile-card">
+        <div class="profile-avatar-wrap">
+          <div style="font-size: 2.2rem;">👨‍💻</div>
+        </div>
+        <h3 class="profile-name">Yuvraj Rauniyar</h3>
+        <span class="profile-role">Software Developer | AI & Security</span>
+        
+        <p style="font-size: 0.8rem; color: #555555; line-height: 1.5; margin: 6px 0;">
+          CSE @ NIT Warangal • Problem Solver • Smart India Hackathon 2026
+        </p>
+
+        <div class="profile-socials-row">
+          <a href="https://github.com/Yuv-Raj-15" target="_blank" class="social-icon-link" title="GitHub">GH</a>
+          <a href="https://linkedin.com" target="_blank" class="social-icon-link" title="LinkedIn">IN</a>
+          <a href="https://yuvrajrauniyar.com.np" target="_blank" class="social-icon-link" title="Portfolio">🌐</a>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Big Motto Banner (Screenshot 4 Match) -->
+  <div class="motto-banner">
+    I'm a developer, problem-solver, & code nerd.
+  </div>
+
+  <!-- =====================================================================
+       6. Core Capabilities / Skills (Directly Matching Screenshot 3)
+       ===================================================================== -->
+  <section class="capabilities-section" id="capabilities">
+    <div class="section-heading-row">
+      <h2 class="section-title">Core Capabilities</h2>
+      <span class="section-subtitle-tag">• PrivacyVision Engine Features</span>
+    </div>
+
+    <div class="cap-grid">
+      
+      <div class="cap-card">
+        <div class="cap-header">
+          <span class="cap-icon">&lt;/&gt;</span>
+          <h3 class="cap-title">Web Automation & DOM Execution</h3>
+        </div>
+        <p class="cap-desc">
+          Resilient action planner executing clicks, inputs, keyboard keystrokes, and form completions across dynamic SPAs without hardcoded selectors.
+        </p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-header">
+          <span class="cap-icon">⚙️</span>
+          <h3 class="cap-title">On-Device Privacy & Redaction</h3>
+        </div>
+        <p class="cap-desc">
+          Hardware-accelerated canvas blackouts and client-side regex engines scrubbing passwords, Aadhaar, PAN, and CVVs before network egress.
+        </p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-header">
+          <span class="cap-icon">⚡</span>
+          <h3 class="cap-title">Dual-AI Decision Engine</h3>
+        </div>
+        <p class="cap-desc">
+          Division of labor between perception (AI-1: visual obstacle diagnostics) and micro-action generation (AI-2: element selection & validation).
+        </p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-header">
+          <span class="cap-icon">🧠</span>
+          <h3 class="cap-title">Biometric Face Authorization Gate</h3>
+        </div>
+        <p class="cap-desc">
+          Zero-leak on-device camera verification for high-value financial transfers and critical authorization checkpoints.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       7. "Get in Touch" / Custom Goal Form (Directly Matching Screenshot 5)
+       ===================================================================== -->
+  <section class="contact-section" id="contact">
+    <div class="contact-hero">
+      <h2 class="contact-title">Get in touch</h2>
+      <p class="contact-subtitle">Open for Internship, Projects & Full-time roles</p>
+    </div>
+
+    <form class="contact-form" onsubmit="handleContactSubmit(event)">
+      <div class="contact-field">
+        <label for="contact-name">Name</label>
+        <input type="text" id="contact-name" placeholder="Name" required>
+      </div>
+
+      <div class="contact-field">
+        <label for="contact-email">Email</label>
+        <input type="email" id="contact-email" placeholder="brand@gmail.com" required>
+      </div>
+
+      <div class="contact-field">
+        <label for="contact-message">Message</label>
+        <textarea id="contact-message" rows="5" placeholder="Message" required></textarea>
+      </div>
+
+      <button type="submit" class="btn-contact-submit" id="btn-submit-contact">Send Message ↗</button>
+      <div id="contact-feedback" style="display: none; text-align: center; color: var(--accent-green); font-size: 0.85rem; font-weight: 600; margin-top: 10px;">
+        ✓ Message received! Thanks for reaching out.
+      </div>
+    </form>
+  </section>
+
+  <!-- =====================================================================
+       8. Minimalist Footer (Matching Screenshots 3, 4, 5)
+       ===================================================================== -->
+  <footer class="portfolio-footer">
+    <div class="footer-copy">
+      © 2026 Yuvraj Rauniyar • PrivacyVision. All rights reserved.
+    </div>
+    <div class="footer-socials">
+      <a href="https://github.com/Yuv-Raj-15" target="_blank" class="footer-social-link">GitHub</a>
+      <a href="https://linkedin.com" target="_blank" class="footer-social-link">LinkedIn</a>
+      <a href="https://yuvrajrauniyar.com.np" target="_blank" class="footer-social-link">Portfolio</a>
+    </div>
+  </footer>
+
+  <!-- Interactive Scripts -->
+  <script>
+    // Tab Switching
+    const portalTabs = document.querySelectorAll('.portal-tab-btn');
+    const portalViews = document.querySelectorAll('.portal-view');
+
+    portalTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        portalTabs.forEach(t => t.classList.remove('active'));
+        portalViews.forEach(v => v.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.portal).classList.add('active');
+      });
+    });
+
+    // Cookie Simulator
+    const cookieBtn = document.getElementById('btn-trigger-cookie');
+    const cookieOverlay = document.getElementById('cookie-consent-overlay');
+    const cookieAccept = document.getElementById('btn-cookie-accept');
+    const cookieDismiss = document.getElementById('btn-cookie-dismiss');
+
+    if (cookieBtn) {
+      cookieBtn.addEventListener('click', () => {
+        cookieOverlay.style.display = cookieOverlay.style.display === 'none' ? 'block' : 'none';
+      });
+    }
+    if (cookieAccept) {
+      cookieAccept.addEventListener('click', () => {
+        cookieOverlay.style.display = 'none';
+      });
+    }
+    if (cookieDismiss) {
+      cookieDismiss.addEventListener('click', () => {
+        cookieOverlay.style.display = 'none';
+      });
+    }
+
+    // Bank Handlers
+    function handleTransferSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('beneficiary-name').value || 'Rahul Mehta';
+      const amount = document.getElementById('transfer-amount').value || '25000';
+
+      document.getElementById('rec-name').textContent = name;
+      document.getElementById('rec-amount').textContent = `₹${Number(amount).toLocaleString('en-IN')}.00`;
+      document.getElementById('rec-ref').textContent = `SB-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+      document.getElementById('bank-form-section').style.display = 'none';
+      document.getElementById('transfer-success-modal').style.display = 'block';
+    }
+
+    function resetBankForm() {
+      document.getElementById('bank-form-section').style.display = 'block';
+      document.getElementById('transfer-success-modal').style.display = 'none';
+      document.getElementById('fund-transfer-form').reset();
+    }
+
+    // Shop Handlers
+    let cartItems = [];
+
+    function addToCart(title, price) {
+      cartItems.push({ title, price });
+      document.getElementById('cart-counter').textContent = cartItems.length;
+      renderCart();
+      document.getElementById('cart-drawer').style.display = 'block';
+    }
+
+    function renderCart() {
+      const list = document.getElementById('cart-items-list');
+      if (!list) return;
+      list.innerHTML = '';
+      let total = 0;
+      cartItems.forEach(item => {
+        total += item.price;
+        const row = document.createElement('div');
+        row.className = 'cart-item-row';
+        row.innerHTML = `<span>${item.title}</span><strong>₹${item.price.toLocaleString('en-IN')}</strong>`;
+        list.appendChild(row);
+      });
+      document.getElementById('cart-total-val').textContent = `₹${total.toLocaleString('en-IN')}`;
+    }
+
+    function closeCart() {
+      document.getElementById('cart-drawer').style.display = 'none';
+    }
+
+    function showCheckout() {
+      document.getElementById('cart-drawer').style.display = 'none';
+      document.getElementById('checkout-view').style.display = 'block';
+    }
+
+    function confirmAddress() {
+      const btn = document.getElementById('btn-select-address');
+      btn.textContent = '✓ Address Confirmed';
+      btn.style.borderColor = '#22c55e';
+      btn.style.color = '#22c55e';
+    }
+
+    function placeOrder() {
+      document.getElementById('checkout-view').style.display = 'none';
+      document.getElementById('order-ref').textContent = `NX-${Math.floor(10000 + Math.random() * 90000)}`;
+      document.getElementById('order-success-screen').style.display = 'block';
+    }
+
+    function resetShop() {
+      cartItems = [];
+      document.getElementById('cart-counter').textContent = '0';
+      document.getElementById('order-success-screen').style.display = 'none';
+      document.getElementById('checkout-view').style.display = 'none';
+      document.getElementById('cart-drawer').style.display = 'none';
+    }
+
+    // Login Handlers
+    function handleLoginSubmit(e) {
+      e.preventDefault();
+      const user = document.getElementById('login-username').value || 'priya.sharma@gmail.com';
+      document.getElementById('logged-user-name').textContent = user;
+      document.getElementById('login-form-section').style.display = 'none';
+      document.getElementById('login-success-modal').style.display = 'block';
+    }
+
+    function resetLoginForm() {
+      document.getElementById('login-form-section').style.display = 'block';
+      document.getElementById('login-success-modal').style.display = 'none';
+      document.getElementById('portal-auth-form').reset();
+    }
+
+    // Contact Form Handler
+    function handleContactSubmit(e) {
+      e.preventDefault();
+      document.getElementById('contact-feedback').style.display = 'block';
+      setTimeout(() => {
+        document.getElementById('contact-name').value = '';
+        document.getElementById('contact-email').value = '';
+        document.getElementById('contact-message').value = '';
+      }, 1000);
+    }
+
+    // Subtitle typewriter effect
+    const phrases = [
+      "Zero-Leak Autonomous Web Agent",
+      "Perception + Tactical Decision AI",
+      "On-Device PII & Biometric Shield",
+      "Smart India Hackathon 2026"
+    ];
+    let phraseIdx = 0;
+    let charIdx = 0;
+    let isDeleting = false;
+    const subElem = document.getElementById('hero-subtitle-text');
+
+    function typeLoop() {
+      const current = phrases[phraseIdx];
+      if (isDeleting) {
+        subElem.textContent = current.substring(0, charIdx - 1);
+        charIdx--;
+      } else {
+        subElem.textContent = current.substring(0, charIdx + 1);
+        charIdx++;
+      }
+
+      let speed = isDeleting ? 40 : 80;
+
+      if (!isDeleting && charIdx === current.length) {
+        speed = 2000;
+        isDeleting = true;
+      } else if (isDeleting && charIdx === 0) {
+        isDeleting = false;
+        phraseIdx = (phraseIdx + 1) % phrases.length;
+        speed = 400;
+      }
+
+      setTimeout(typeLoop, speed);
+    }
+    setTimeout(typeLoop, 1000);
+  </script>
+</body>
+</html>

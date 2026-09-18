@@ -364,7 +364,72 @@ var DOMAnalyzer = (() => {
     return '';
   }
 
-  return { analyze, generateTextSummary };
+  /**
+   * Generate a structured JSON summary of the page for AI-2 selector picking.
+   * Produces a machine-readable DOM map with indexed, selector-addressable elements.
+   * This is sent as `dom_structured` alongside the text summary.
+   * @param {object} analysis - Output from analyze()
+   * @returns {object} Structured DOM summary
+   */
+  function generateStructuredSummary(analysis) {
+    const interactive = [];
+    const textBlocks = [];
+
+    // Page type hinting — classify the page to help AI-1 skip unnecessary reasoning
+    const url = (analysis.pageInfo?.url || '').toLowerCase();
+    const title = (analysis.pageInfo?.title || '').toLowerCase();
+    let pageTypeHint = 'general';
+    if (/login|signin|sign-in|auth|authenticate/i.test(url + title)) pageTypeHint = 'login_form';
+    else if (/checkout|cart|payment|pay|billing/i.test(url + title)) pageTypeHint = 'checkout_form';
+    else if (/search\?|q=|query=/i.test(url)) pageTypeHint = 'search_results';
+    else if (/register|signup|sign-up|create.*account/i.test(url + title)) pageTypeHint = 'registration_form';
+    else if (/profile|user\//i.test(url)) pageTypeHint = 'profile_page';
+    else if (/feed|home|dashboard/i.test(url)) pageTypeHint = 'feed_page';
+
+    for (const el of (analysis.elements || [])) {
+      if (el.type === 'text') {
+        // Collect visible text blocks for page state context
+        const t = (el.text || '').trim();
+        if (t.length > 1 && t.length < 200) {
+          textBlocks.push(t);
+        }
+        continue;
+      }
+      if (el.type === 'image') continue;
+
+      // Interactive element — emit compact descriptor
+      const entry = {
+        idx: el.index,
+        tag: el.tag,
+        sel: el.selector || '',
+      };
+      if (el.role && el.role !== el.tag && el.role !== 'generic') entry.role = el.role;
+      if (el.inputType && el.inputType !== 'text' && el.inputType !== el.tag) entry.type = el.inputType;
+      if (el.text) entry.text = el.text.substring(0, 80);
+      if (el.placeholder) entry.placeholder = el.placeholder.substring(0, 60);
+      if (el.ariaLabel) entry.ariaLabel = el.ariaLabel.substring(0, 60);
+      if (el.fieldLabel) entry.fieldLabel = el.fieldLabel.substring(0, 50);
+      if (el.href) entry.href = el.href.substring(0, 120);
+      if (el.value && el.tag !== 'input') entry.value = el.value.substring(0, 40);
+      if (el.disabled) entry.disabled = true;
+      if (el.required) entry.required = true;
+      interactive.push(entry);
+    }
+
+    return {
+      url: analysis.pageInfo?.url || '',
+      title: analysis.pageInfo?.title || '',
+      domain: analysis.pageInfo?.domain || '',
+      page_type_hint: pageTypeHint,
+      scroll_y: analysis.viewport?.scrollY || 0,
+      total_height: analysis.viewport?.totalHeight || 0,
+      interactive,
+      text_blocks: textBlocks.slice(0, 30),
+      element_count: analysis.elementCount || 0,
+    };
+  }
+
+  return { analyze, generateTextSummary, generateStructuredSummary };
 })();
 
 if (typeof window !== 'undefined') {

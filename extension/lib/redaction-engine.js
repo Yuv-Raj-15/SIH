@@ -88,7 +88,10 @@ var RedactionEngine = (() => {
 
       // Draw label badge
       if (drawLabels && region.label) {
-        _drawLabel(ctx, rx, ry, region.label, labelFont, labelColor, labelBgColor);
+        const isFace = method === 'blur' || region.type === 'FACE_IMAGE' || region.type === 'FACE';
+        const badgeBg = isFace ? '#15803d' : labelBgColor;
+        const badgeText = isFace ? '🛡️ FACE MASKED' : region.label;
+        _drawLabel(ctx, rx, ry, badgeText, labelFont, labelColor, badgeBg);
       }
 
       // Record in manifest
@@ -110,57 +113,54 @@ var RedactionEngine = (() => {
   // ── Redaction methods ───────────────────────────────────────────────
 
   function _applyBlur(ctx, x, y, w, h, radius) {
-    // Use CSS filter for blur (supported in modern browsers)
-    ctx.save();
-    ctx.filter = `blur(${radius}px)`;
-    // Need to clip to prevent blur bleeding
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    // Re-draw just this region
-    const imgData = ctx.getImageData(x, y, w, h);
-    ctx.putImageData(imgData, x, y);
-    // Draw the blurred version on top
-    ctx.drawImage(ctx.canvas, x, y, w, h, x, y, w, h);
-    ctx.restore();
+    if (w <= 2 || h <= 2) return;
 
-    // Fallback: manual box blur if filter not effective
-    _manualBlur(ctx, x, y, w, h, Math.min(radius, 10));
-  }
+    try {
+      // 1. Irreversible downsample-upsample blur
+      const factor = 0.08; // 8% resolution
+      const sw = Math.max(2, Math.floor(w * factor));
+      const sh = Math.max(2, Math.floor(h * factor));
 
-  function _manualBlur(ctx, x, y, w, h, radius) {
-    const imageData = ctx.getImageData(x, y, w, h);
-    const data = imageData.data;
-    const pxW = imageData.width;
-    const pxH = imageData.height;
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = sw;
+      tempCanvas.height = sh;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.imageSmoothingEnabled = true;
 
-    // Simple box blur
-    const copy = new Uint8ClampedArray(data);
-    const size = radius * 2 + 1;
-    const area = size * size;
+      // Draw region downscaled
+      tempCtx.drawImage(ctx.canvas, x, y, w, h, 0, 0, sw, sh);
 
-    for (let py = 0; py < pxH; py++) {
-      for (let px = 0; px < pxW; px++) {
-        let r = 0, g = 0, b = 0, a = 0, count = 0;
-        for (let dy = -radius; dy <= radius; dy++) {
-          for (let dx = -radius; dx <= radius; dx++) {
-            const nx = px + dx, ny = py + dy;
-            if (nx >= 0 && nx < pxW && ny >= 0 && ny < pxH) {
-              const i = (ny * pxW + nx) * 4;
-              r += copy[i]; g += copy[i + 1]; b += copy[i + 2]; a += copy[i + 3];
-              count++;
-            }
-          }
-        }
-        const idx = (py * pxW + px) * 4;
-        data[idx] = r / count;
-        data[idx + 1] = g / count;
-        data[idx + 2] = b / count;
-        data[idx + 3] = a / count;
+      // Draw back upscaled with smoothing to produce Gaussian-like diffusion
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(tempCanvas, 0, 0, sw, sh, x, y, w, h);
+
+      // 2. Add an airtight privacy tint overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(x, y, w, h);
+
+      // 3. Draw high-visibility Emerald Green Privacy Shield border
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x, y, w, h);
+      ctx.setLineDash([]); // Reset line dash
+
+      // 4. Draw central shield watermark emblem if region is large enough
+      if (w >= 36 && h >= 36) {
+        const fontSize = Math.min(24, Math.max(12, Math.floor(Math.min(w, h) * 0.32)));
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🛡️', x + w / 2, y + h / 2);
       }
-    }
 
-    ctx.putImageData(imageData, x, y);
+      ctx.restore();
+    } catch {
+      // Fallback: solid pitch-black cover if canvas operations fail
+      _applyBlackout(ctx, x, y, w, h, '#000000');
+    }
   }
 
   function _applyBlackout(ctx, x, y, w, h, color) {
@@ -257,23 +257,28 @@ var RedactionEngine = (() => {
     switch (piiType) {
       case 'FACE_IMAGE':
       case 'FACE':
+      case 'AVATAR':
+      case 'PROFILE_IMAGE':
         return 'blur';
       case 'PASSWORD':
-        return 'blackout';
+      case 'PIN':
       case 'CREDIT_CARD':
       case 'AADHAAR':
       case 'SSN':
       case 'PAN':
       case 'PASSPORT':
+      case 'ACCOUNT_NUMBER':
+      case 'USERNAME':
+      case 'PERSON_NAME':
+      case 'SOCIAL_METRIC':
         return 'blackout';
       case 'EMAIL':
       case 'PHONE':
       case 'UPI_ID':
+      case 'PERSONAL_URL':
         return 'colorblock';
-      case 'ACCOUNT_NUMBER':
-        return 'blackout';
       default:
-        return 'colorblock';
+        return 'blackout';
     }
   }
 

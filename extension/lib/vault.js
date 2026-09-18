@@ -209,41 +209,156 @@ var Vault = (() => {
   }
 
   /**
-   * Find credentials matching the current webpage hostname / domain.
+   * Find credentials matching the current webpage hostname, domain, title, or form context.
+   * Supports web URLs (https://), local files (file:///), localhost, and context-based category matching.
+   * @param {string} urlOrHostname - Current tab URL or hostname
+   * @param {string} [contextText=''] - Optional context (document.title, form labels, user goal)
+   * @returns {Promise<Array<object>>} Matching credentials sorted by relevance score
    */
-  async function findMatchingCredentials(urlOrHostname) {
-    if (!urlOrHostname) return [];
-    let host = urlOrHostname.toLowerCase();
+  async function findMatchingCredentials(urlOrHostname, contextText = '') {
+    const all = await getAllCredentials();
+    if (!all || all.length === 0) return [];
+
+    let rawUrl = (urlOrHostname || '').toLowerCase().trim();
+    let context = (contextText || '').toLowerCase().trim();
+
+    // If in browser context, also include document title and visible keywords
+    if (typeof document !== 'undefined') {
+      try {
+        if (!context) {
+          context = `${document.title || ''} ${window.location.pathname || ''}`.toLowerCase();
+        } else {
+          context += ` ${document.title || ''} ${window.location.pathname || ''}`.toLowerCase();
+        }
+      } catch {}
+    }
+
+    // Normalize target host
+    let host = rawUrl;
+    let path = '';
     try {
-      if (host.startsWith('http://') || host.startsWith('https://')) {
-        host = new URL(host).hostname;
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        const parsed = new URL(rawUrl);
+        host = parsed.hostname;
+        path = parsed.pathname.toLowerCase();
+      } else if (rawUrl.startsWith('file://')) {
+        path = rawUrl.replace(/^file:\/\/\/?/i, '').toLowerCase();
+        host = 'localhost';
       }
     } catch {}
 
-    // Extract core brand name (e.g. 'amazon' from 'www.amazon.in', 'amazon.com', 'smile.amazon.com')
-    const cleanHost = host.replace(/^www\./, '');
+    const cleanHost = host.replace(/^www\./, '').split(':')[0];
     const hostParts = cleanHost.split('.');
     const hostBrand = hostParts.length >= 2 ? hostParts[0] : cleanHost;
 
-    const all = await getAllCredentials();
-    return all.filter((c) => {
-      const target = (c.domain || '').toLowerCase();
-      const cleanTarget = target.replace(/^www\./, '');
+    const scored = [];
+
+    for (const c of all) {
+      let score = 0;
+      const credDomain = (c.domain || '').toLowerCase().trim();
+      const credName = (c.name || '').toLowerCase().trim();
+      const credCategory = (c.category || '').toLowerCase().trim();
+      const credData = c.data || {};
+
+      // Normalize stored domain
+      let cleanTarget = credDomain
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./i, '')
+        .split('/')[0]
+        .split(':')[0];
       const targetParts = cleanTarget.split('.');
       const targetBrand = targetParts.length >= 2 ? targetParts[0] : cleanTarget;
 
-      return (
-        host === target ||
-        cleanHost === cleanTarget ||
-        host.endsWith('.' + target) ||
-        target.endsWith('.' + host) ||
-        target.includes(host) ||
-        host.includes(target) ||
-        (hostBrand && targetBrand && hostBrand.length >= 3 && (hostBrand === targetBrand || hostBrand.includes(targetBrand) || targetBrand.includes(hostBrand))) ||
-        // Support demo test page matching
-        (target.includes('bank') && (host.includes('bank') || host.includes('localhost') || host.includes('127.0.0.1') || host.includes('demo')))
-      );
-    });
+      // 1. Exact Host / Domain Match
+      if (cleanHost && cleanTarget && (cleanHost === cleanTarget || host === credDomain)) {
+        score = Math.max(score, 100);
+      }
+
+      // 2. Subdomain Match (e.g. auth.securebank.com vs securebank.com)
+      if (cleanHost && cleanTarget && (cleanHost.endsWith('.' + cleanTarget) || cleanTarget.endsWith('.' + cleanHost))) {
+        score = Math.max(score, 90);
+      }
+
+      // 3. Brand Name Match (e.g. 'amazon' in 'amazon.in' or 'amazon.com')
+      if (hostBrand && targetBrand && hostBrand.length >= 3 && targetBrand.length >= 3) {
+        if (hostBrand === targetBrand) score = Math.max(score, 85);
+        else if (hostBrand.includes(targetBrand) || targetBrand.includes(hostBrand)) score = Math.max(score, 80);
+      }
+
+      // 4. URL or Path Match (e.g. file:///.../demo/index.html or path /bank/)
+      if (cleanTarget.length >= 3 && (rawUrl.includes(cleanTarget) || path.includes(cleanTarget))) {
+        score = Math.max(score, 75);
+      }
+
+      // 5. Context / Page Title Match
+      if (context) {
+        if (cleanTarget.length >= 3 && context.includes(cleanTarget)) {
+          score = Math.max(score, 75);
+        }
+        if (credName.length >= 3 && context.includes(credName)) {
+          score = Math.max(score, 70);
+        }
+        if (targetBrand.length >= 3 && context.includes(targetBrand)) {
+          score = Math.max(score, 70);
+        }
+
+        // Beneficiary or account keyword in context (e.g. "Rahul", "Rent", "HDFC")
+        if (credData.beneficiary && context.includes(credData.beneficiary.toLowerCase())) {
+          score = Math.max(score, 85);
+        }
+        if (credData.username && context.includes(credData.username.toLowerCase())) {
+          score = Math.max(score, 85);
+        }
+      }
+
+      // 6. Category Heuristics
+      // If page is a banking / fund transfer form
+      const isBankingContext = /bank|transfer|neft|imps|beneficiary|accountnumber|ifsc/i.test(context + ' ' + rawUrl);
+      if (isBankingContext && credCategory === 'banking') {
+        score = Math.max(score, 65);
+      }
+
+      // If page is a UPI payment
+      const isUpiContext = /upi|vpa|gpay|phonepe|paytm/i.test(context + ' ' + rawUrl);
+      if (isUpiContext && credCategory === 'upi') {
+        score = Math.max(score, 65);
+      }
+
+      // If page is a login form and credential has password
+      const isLoginContext = /login|signin|sign-in|authenticate|portal|auth/i.test(context + ' ' + rawUrl);
+      if (isLoginContext && credData.password) {
+        score = Math.max(score, 60);
+      }
+
+      // Demo page general match
+      if ((rawUrl.includes('demo') || host.includes('localhost') || rawUrl.includes('127.0.0.1')) && credDomain.includes('bank')) {
+        score = Math.max(score, 60);
+      }
+
+      if (score > 0) {
+        scored.push({ cred: c, score });
+      }
+    }
+
+    // Sort by descending match score
+    scored.sort((a, b) => b.score - a.score);
+
+    // If no direct domain score matched, but the vault contains credentials and context has login/banking
+    if (scored.length === 0 && all.length > 0) {
+      const isLoginOrBank = /login|signin|password|user|bank|transfer|cred/i.test(context);
+      if (isLoginOrBank) {
+        // Return banking credential if bank mentioned, or first credential with password
+        const bankCred = all.find(c => c.category === 'banking');
+        if (/bank|transfer|neft|pay/i.test(context) && bankCred) {
+          scored.push({ cred: bankCred, score: 40 });
+        } else {
+          const pwdCred = all.find(c => c.data?.password);
+          if (pwdCred) scored.push({ cred: pwdCred, score: 30 });
+        }
+      }
+    }
+
+    return scored.map(s => s.cred);
   }
 
   /**
@@ -277,6 +392,8 @@ var Vault = (() => {
         beneficiary: 'Rahul Mehta',
         amount: '25000',
         remarks: 'Rent for September 2026',
+        upiPin: '849201',
+        pin: '849201',
       },
     });
 

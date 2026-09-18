@@ -4,7 +4,24 @@
 
 import './lib/vault.js';
 
-// ── State ────────────────────────────────────────────────────────────
+// ── Token Reversal Helper ───────────────────────────────────────────
+function _detokenizeUrl(url, tokenMap) {
+  if (!url || !tokenMap) return url;
+  let decoded = url;
+  for (const [token, value] of Object.entries(tokenMap)) {
+    if (decoded.includes(token)) {
+      decoded = decoded.replaceAll(token, value);
+    }
+    // Also check URL-encoded version of token
+    const encodedToken = encodeURIComponent(token);
+    if (decoded.includes(encodedToken)) {
+      decoded = decoded.replaceAll(encodedToken, encodeURIComponent(value));
+    }
+  }
+  return decoded;
+}
+
+// ── PII Sanitization & Overlays ────────────────────────────────────────────────────────────
 const DEFAULT_SERVER_URL = 'http://localhost:8000';
 // Timeout for server VLM reasoning (120s buffer for multimodal models)
 const SERVER_TIMEOUT_MS = 120_000;
@@ -24,30 +41,69 @@ chrome.storage.local.get(['serverUrl'], (result) => {
 
 // ── Message handling ─────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Bug 6 fix: Ignore REDACT_IMAGE — that's for the offscreen document
-  if (message.type === 'REDACT_IMAGE') return;
-  // Also ignore progress messages sent by ourselves
-  if (message.type === 'AGENT_PROGRESS') return;
+  if (!message || typeof message !== 'object') {
+    sendResponse({ success: false, error: 'Invalid message' });
+    return false;
+  }
+  // These message types are fire-and-forget broadcasts — never need a response
+  if (message.type === 'REDACT_IMAGE') return false;
+  if (message.type === 'AGENT_PROGRESS') return false;
+  if (message.type === 'AGENT_COMPLETE') return false;
 
   const handler = BG_HANDLERS[message.type];
-  if (handler) {
-    handler(message.payload, sender)
-      .then((data) => sendResponse({ success: true, data }))
-      .catch((err) => {
-        console.error('[PrivacyVision] Error:', err);
-        sendResponse({ success: false, error: err.message });
-      });
-    return true; // Async response
+  if (!handler) {
+    sendResponse({ success: false, error: `Unrecognized message type: ${message.type}` });
+    return false;
   }
+
+  // START_AGENT_RUN is fire-and-run: respond immediately with ack,
+  // then execute asynchronously and push results via AGENT_COMPLETE.
+  if (message.type === 'START_AGENT_RUN') {
+    const runId = Date.now().toString(36);
+    sendResponse({ success: true, data: { runId, started: true } });
+    // Run the agent asynchronously — never awaited by popup
+    handler(message.payload, sender).then((result) => {
+      _safeMessage({ type: 'AGENT_COMPLETE', payload: { runId, ...result } });
+    }).catch((err) => {
+      console.error('[PrivacyVision] START_AGENT_RUN failed:', err);
+      _safeMessage({ type: 'AGENT_COMPLETE', payload: { runId, error: err.message || String(err) } });
+    });
+    return false; // Channel already closed (sendResponse already called)
+  }
+
+  // All other handlers: keep channel open, respond when done
+  let responded = false;
+  const safeRespond = (resp) => {
+    if (responded) return;
+    responded = true;
+    try { sendResponse(resp); } catch { /* port closed */ }
+  };
+
+  handler(message.payload, sender)
+    .then((data) => safeRespond({ success: true, data }))
+    .catch((err) => {
+      console.error(`[PrivacyVision] Handler error for ${message.type}:`, err);
+      safeRespond({ success: false, error: err.message || 'Handler failed' });
+    });
+  return true; // Async response channel kept open
 });
+
+/** Fire-and-forget message helper — never throws, even if popup is closed */
+function _safeMessage(msg) {
+  try {
+    chrome.runtime.sendMessage(msg).catch(() => {});
+  } catch { /* extension context may be invalidated */ }
+}
+
+
 
 const BG_HANDLERS = {
   START_AGENT_RUN: async (payload) => {
     if (isProcessing) throw new Error('Agent run already in progress');
     isProcessing = true;
     
-    const latencies = { ner: 0, redaction: 0, vlm: 0, dom: 0 };
-    let audit = { localText: '', cloudText: '' };
+    const latencies = { ner: 0, redaction: 0, reasoning: 0, decision: 0, vlm: 0, dom: 0 };
+    let audit = { localText: '', cloudText: '', localMaskingLedger: null, telemetry: null };
     let totalActionsExecuted = 0;
     let actionError = null;
     let consecutiveFailures = 0;
@@ -65,21 +121,24 @@ const BG_HANDLERS = {
     
     try {
       let iter = 0;
-      let maxSteps = _estimateInitialSteps(payload.instruction);
+      // Use estimatedSteps from AI plan if provided, otherwise estimate heuristically
+      let maxSteps = payload.estimatedSteps || _estimateInitialSteps(payload.instruction);
       let tabId = await _getActiveTabId();
 
-      // ── Pre-check: If current tab is restricted, navigate immediately to the target or Google
+      // ── Pre-check: If current tab is restricted, navigate immediately to the AI-planned target URL
       const isRestricted = await _isRestrictedPage(tabId);
       if (isRestricted) {
         const instruction = payload.instruction || '';
-        // Automatically determine target URL or search query — NEVER crash with Chrome error!
-        const targetUrl = _extractUrlFromInstruction(instruction) ||
+        // Detokenize the URL using the token map provided by the popup
+        let targetUrl = payload.targetUrl ||
+          _extractUrlFromInstruction(instruction) ||
           `https://www.google.com/search?q=${encodeURIComponent(instruction)}`;
+        targetUrl = _detokenizeUrl(targetUrl, payload.tokenMap);
 
-        chrome.runtime.sendMessage({
+        _safeMessage({
           type: 'AGENT_PROGRESS',
           payload: { step: 0, maxSteps, message: `Navigating to ${targetUrl}...` }
-        }).catch(() => {});
+        });
 
         await chrome.tabs.update(tabId, { url: targetUrl });
         await _waitForNavigation(tabId);
@@ -91,10 +150,10 @@ const BG_HANDLERS = {
       while (iter < maxSteps) {
         iter++;
         // Update popup UI via progress message
-        chrome.runtime.sendMessage({ 
+        _safeMessage({ 
           type: 'AGENT_PROGRESS', 
           payload: { step: iter, maxSteps, message: `Step ${iter} of ${maxSteps}: Analyzing page...` } 
-        }).catch(() => {});
+        });
         
         tabId = await _getActiveTabId();
 
@@ -125,7 +184,7 @@ const BG_HANDLERS = {
         });
         let redactionResult = { sanitizedImage: screenshotDataUrl, manifest: { redactions: [] } };
         try {
-          redactionResult = await _redactScreenshot(screenshotDataUrl, pageData.redactionRegions);
+          redactionResult = await _redactScreenshot(screenshotDataUrl, pageData.redactionRegions, tabId);
         } catch (redactErr) {
           console.warn('[PrivacyVision] Visual redaction non-fatal warning:', redactErr.message);
         }
@@ -141,17 +200,28 @@ const BG_HANDLERS = {
           piiFindings: pageData.piiFindings
         };
 
-        // Step 3: Server / VLM Reasoning
-        chrome.runtime.sendMessage({ 
+        // Step 3: Dual-AI Server Reasoning & Decision
+        _safeMessage({ 
           type: 'AGENT_PROGRESS', 
-          payload: { step: iter, maxSteps, message: `Step ${iter} of ${maxSteps}: Reasoning...` } 
-        }).catch(() => {});
+          payload: { 
+            step: iter, 
+            maxSteps, 
+            phase: 'ai_reasoning',
+            message: `Step ${iter} of ${maxSteps}: AI-1 Vision Reasoning (Key 1)...` 
+          } 
+        });
         
         let sanitizedInstruction = payload.instruction || 'Analyze and act.';
         try {
-          const sRes = await _sendToContentScript(tabId, 'SANITIZE_INSTRUCTION', { text: sanitizedInstruction });
+          const sRes = await _sendToContentScript(tabId, 'SANITIZE_INSTRUCTION', {
+            text: sanitizedInstruction,
+            tokenMap: payload.tokenMap || {},
+          });
           if (sRes && sRes.sanitized) {
             sanitizedInstruction = sRes.sanitized;
+          }
+          if (sRes && sRes.tokenMap) {
+            payload.tokenMap = { ...(payload.tokenMap || {}), ...sRes.tokenMap };
           }
         } catch {}
 
@@ -161,9 +231,44 @@ const BG_HANDLERS = {
           pageData.textSummary,
           redactionResult.manifest,
           sanitizedInstruction,
-          actionHistory
+          actionHistory,
+          {
+            scan_duration_ms: latencies.ner,
+            redaction_duration_ms: latencies.redaction,
+            findings_count: (pageData.piiFindings || []).length
+          },
+          pageData.domStructured,      // ← Structured DOM for AI-2 indexed selector picking
+          payload.plan?.steps || (payload.targetUrl ? [{ step: 1, action: 'Navigate', detail: `Open ${payload.targetUrl}` }] : null)  // ← Pre-seed AI with planned steps
+
         );
-        latencies.vlm += Math.round(performance.now() - t0);
+        const vlmElapsed = Math.round(performance.now() - t0);
+        latencies.vlm += vlmElapsed;
+
+        if (serverResponse?.telemetry) {
+          latencies.reasoning = serverResponse.telemetry.ai_reasoning?.latency_ms || Math.round(vlmElapsed * 0.55);
+          latencies.decision = serverResponse.telemetry.ai_decision?.latency_ms || Math.round(vlmElapsed * 0.45);
+        }
+
+        // Ensure local masking ledger is fully populated from findings if server omitted it
+        const ledgerEntities = serverResponse?.local_masking_ledger?.entities || {};
+        if (Object.keys(ledgerEntities).length === 0 && (pageData.piiFindings || []).length > 0) {
+          (pageData.piiFindings || []).forEach((f) => {
+            if (!ledgerEntities[f.type]) {
+              const isFace = f.type === 'FACE_IMAGE' || f.type === 'FACE';
+              ledgerEntities[f.type] = {
+                count: 0,
+                technique: isFace ? 'Gaussian Blur & Privacy Shield' : 'Cryptographic Token Blackout',
+                tokens: []
+              };
+            }
+            ledgerEntities[f.type].count++;
+            if (f.token && !ledgerEntities[f.type].tokens.includes(f.token)) {
+              ledgerEntities[f.type].tokens.push(f.token);
+            }
+          });
+        }
+
+        const totalMaskedCount = (redactionResult.manifest?.redactions || []).length || (pageData.piiFindings || []).length;
 
         // Save comprehensive zero-leak audit state for popup UI
         audit = {
@@ -171,7 +276,13 @@ const BG_HANDLERS = {
           sanitizedImage: redactionResult.sanitizedImage,
           cloudSummary: _formatAuditCloud(sanitizedInstruction, redactionResult.manifest, pageData.domAnalysis, serverResponse),
           cloudText: pageData.textSummary,
-          redactionsCount: (redactionResult.manifest?.redactions || []).length,
+          redactionsCount: totalMaskedCount,
+          localMaskingLedger: {
+            total_masked: totalMaskedCount,
+            entities: ledgerEntities,
+          },
+          telemetry: serverResponse?.telemetry || null,
+          serverReasoning: serverResponse?.reasoning || '',
         };
         lastAudit = audit;
 
@@ -182,38 +293,6 @@ const BG_HANDLERS = {
 
         // Check if server returned empty actions or completed
         if (!serverResponse || !serverResponse.actions || serverResponse.actions.length === 0) {
-          // SEARCH ENGINE FOLLOW-THROUGH GUARD:
-          // If on a Google/Bing search page and goal is multi-step (e.g. ticket booking/coding), do NOT terminate!
-          const currentTab = await chrome.tabs.get(tabId).catch(() => null);
-          const currentUrl = currentTab?.url || '';
-          const isSearchEngine = /google\.[a-z.]+\/search|bing\.com\/search/i.test(currentUrl);
-          const isMultiStepGoal = _estimateInitialSteps(payload.instruction) > 15;
-
-          if (isSearchEngine && isMultiStepGoal && !serverResponse?.is_goal_complete) {
-            console.log('[PrivacyVision] Search engine follow-through triggered. Entering primary destination link...');
-            chrome.runtime.sendMessage({ 
-              type: 'AGENT_PROGRESS', 
-              payload: { step: iter, maxSteps, message: `Step ${iter} of ${maxSteps}: Following through from search into destination site...` } 
-            }).catch(() => {});
-
-            const followThrough = await _sendToContentScript(tabId, 'EXECUTE_ACTIONS', {
-              actions: [{
-                type: 'click',
-                selector: 'div#search a[href^="http"]:not([href*="google"]), div.g a[href^="http"], a:has(h3)',
-                description: 'Click primary search result link'
-              }]
-            }).catch(() => null);
-
-            if (followThrough?.results?.[0]?.success) {
-              actionHistory.push('[✓ SUCCESS] Navigated to destination site from search results');
-              totalActionsExecuted++;
-              await _waitForNavigation(tabId);
-              tabId = await _getActiveTabId();
-              await _ensureContentScript(tabId);
-              continue;
-            }
-          }
-
           if (serverResponse?.error) {
             actionError = serverResponse.error;
           }
@@ -225,13 +304,18 @@ const BG_HANDLERS = {
         const navAction = serverResponse.actions.find(a => (a.type || '').toLowerCase() === 'navigate');
         if (navAction) {
           let navUrl = (navAction.url || navAction.value || '').trim();
+          
+          // Reverse tokens before navigation (combining payload tokens + latest scan tokens)
+          const currentTokenMap = { ...(payload.tokenMap || {}), ...(lastAnalysis?.tokenMap || {}) };
+          navUrl = _detokenizeUrl(navUrl, currentTokenMap);
+
           if (!/^https?:\/\//i.test(navUrl) && !navUrl.startsWith('chrome://')) {
             navUrl = `https://${navUrl}`;
           }
-          chrome.runtime.sendMessage({ 
+          _safeMessage({ 
             type: 'AGENT_PROGRESS', 
             payload: { step: iter, maxSteps, message: `Step ${iter} of ${maxSteps}: Navigating to ${navUrl}...` } 
-          }).catch(() => {});
+          });
 
           await chrome.tabs.update(tabId, { url: navUrl });
           await _waitForNavigation(tabId);
@@ -243,10 +327,10 @@ const BG_HANDLERS = {
         }
 
         // Step 4: DOM Action Injector
-        chrome.runtime.sendMessage({ 
+        _safeMessage({ 
           type: 'AGENT_PROGRESS', 
           payload: { step: iter, maxSteps, message: `Step ${iter} of ${maxSteps}: Executing actions...` } 
-        }).catch(() => {});
+        });
 
         const tabBefore = await chrome.tabs.get(tabId).catch(() => null);
         const urlBefore = tabBefore ? tabBefore.url : '';
@@ -254,6 +338,7 @@ const BG_HANDLERS = {
         t0 = performance.now();
         const execution = await _sendToContentScript(tabId, 'EXECUTE_ACTIONS', {
           actions: serverResponse.actions,
+          tokenMap: currentTokenMap,
         });
         const results = Array.isArray(execution?.results) ? execution.results : [];
         for (let aIdx = 0; aIdx < serverResponse.actions.length; aIdx++) {
@@ -262,6 +347,32 @@ const BG_HANDLERS = {
           const desc = (res && res.description) || act.description || `${act.type} on ${act.selector || act.elementIndex || ''}`;
           const status = res && res.success ? '✓ SUCCESS' : '✕ FAILED';
           actionHistory.push(`[${status}] ${desc}`);
+
+          // ── Smart AI-2 Retry: if action failed, ask server for alternative selector ──
+          if (res && !res.success && act.selector && !act._retried) {
+            try {
+              _safeMessage({
+                type: 'AGENT_PROGRESS',
+                payload: { step: iter, maxSteps, phase: 'retry', message: `Step ${iter}: Selector failed — asking AI-2 for alternative...` }
+              });
+
+              const retryRes = await _retryFailedAction(act, pageData, sanitizedInstruction, res.error || 'DOM injection failed');
+              if (retryRes && retryRes.corrected_action && retryRes.corrected_action.selector) {
+                console.log(`[PrivacyVision] AI-2 Retry: replacing selector '${act.selector}' → '${retryRes.corrected_action.selector}'`);
+                const retryExecution = await _sendToContentScript(tabId, 'EXECUTE_ACTIONS', {
+                  actions: [{ ...retryRes.corrected_action, _retried: true }],
+                });
+                const retryResult = retryExecution?.results?.[0];
+                if (retryResult && retryResult.success) {
+                  actionHistory[actionHistory.length - 1] = `[✓ AI-RETRY SUCCESS] ${retryRes.corrected_action.description || retryRes.corrected_action.selector}`;
+                  consecutiveFailures = Math.max(0, consecutiveFailures - 1);
+                  totalActionsExecuted++;
+                }
+              }
+            } catch (retryErr) {
+              console.warn('[PrivacyVision] AI-2 retry failed (non-fatal):', retryErr.message);
+            }
+          }
         }
 
         const successes = results.filter((result) => result && result.success);
@@ -350,6 +461,59 @@ const BG_HANDLERS = {
     }
   },
 
+  PLAN_INSTRUCTION: async (payload) => {
+    const rawInstruction = (payload.instruction || '').trim();
+    if (!rawInstruction) throw new Error('Empty instruction');
+
+    // ── Step 1: Instant on-device PII tokenization (zero-latency in-memory, no tab dependency) ──
+    const { sanitized: sanitizedInstruction, tokenMap } = _sanitizeInstructionInBackground(rawInstruction);
+    const piiCount = Object.keys(tokenMap).length;
+    console.log(`[PrivacyVision] Planner: tokenized ${piiCount} PII entities before server call.`);
+
+    // Broadcast status to popup if listening
+    _safeMessage({
+      type: 'AGENT_PROGRESS',
+      payload: { step: 0, maxSteps: 1, phase: 'planning', message: `Analyzing instruction... (${piiCount} PII entities shielded)` }
+    });
+
+    // ── Step 2: Fetch plan from /api/plan with resilient timeout ─────────────────────
+    let plan = null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+
+    try {
+      const res = await fetch(`${serverUrl}/api/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction: sanitizedInstruction }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      plan = await res.json();
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      console.warn('[PrivacyVision] Planner: server call failed, using heuristic fallback:', fetchErr.message);
+      plan = _buildHeuristicPlan(rawInstruction);
+      plan.error = fetchErr.message;
+    }
+
+    return {
+      plan,
+      sanitizedInstruction,
+      tokenMap,
+      piiCount,
+    };
+  },
+
+  GET_STATUS: async () => {
+    return {
+      isProcessing,
+      lastAudit,
+      lastAnalysis,
+    };
+  },
+
   GET_VAULT_DATA: async () => {
     if (typeof Vault !== 'undefined') {
       try {
@@ -418,6 +582,66 @@ const BG_HANDLERS = {
 
   GET_AUDIT_DATA: async () => {
     return lastAudit || null;
+  },
+
+  QUICK_SCAN_ACTIVE_TAB: async () => {
+    try {
+      const tabId = await _getActiveTabId();
+      await _ensureContentScript(tabId);
+      
+      const pageData = await _sendToContentScript(tabId, 'ANALYZE_PAGE');
+      const screenshotDataUrl = await _captureTab(tabId);
+      
+      // Trigger live on-page visual shield overlays
+      await _sendToContentScript(tabId, 'SHOW_OVERLAYS', {
+        findings: pageData.piiFindings,
+      });
+
+      let redactionResult = { sanitizedImage: screenshotDataUrl, manifest: { redactions: [] } };
+      try {
+        redactionResult = await _redactScreenshot(screenshotDataUrl, pageData.redactionRegions, tabId);
+      } catch (err) {
+        console.warn('[PrivacyVision] Quick visual redaction warning:', err);
+      }
+
+      // Build local ledger directly from findings
+      const ledgerEntities = {};
+      (pageData.piiFindings || []).forEach((f) => {
+        if (!ledgerEntities[f.type]) {
+          const isFace = f.type === 'FACE_IMAGE' || f.type === 'FACE';
+          ledgerEntities[f.type] = {
+            count: 0,
+            technique: isFace ? 'Gaussian Blur & Privacy Shield' : 'Cryptographic Token Blackout',
+            tokens: []
+          };
+        }
+        ledgerEntities[f.type].count++;
+        if (f.token && !ledgerEntities[f.type].tokens.includes(f.token)) {
+          ledgerEntities[f.type].tokens.push(f.token);
+        }
+      });
+
+      const totalMasked = (redactionResult.manifest?.redactions || []).length || (pageData.piiFindings || []).length;
+
+      const audit = {
+        localText: _formatAuditLocal(pageData.piiFindings, pageData.tokenMap),
+        sanitizedImage: redactionResult.sanitizedImage,
+        cloudSummary: _formatAuditCloud('(Active Page On-Demand Privacy Scan)', redactionResult.manifest, pageData.domAnalysis),
+        cloudText: pageData.textSummary,
+        redactionsCount: totalMasked,
+        localMaskingLedger: {
+          total_masked: totalMasked,
+          entities: ledgerEntities,
+        },
+        telemetry: null,
+      };
+
+      lastAudit = audit;
+      return audit;
+    } catch (err) {
+      console.warn('[PrivacyVision] QUICK_SCAN_ACTIVE_TAB error:', err);
+      return lastAudit || null;
+    }
   }
 };
 
@@ -463,110 +687,164 @@ async function _isRestrictedPage(tabId) {
  *      "open any unknown site" / "open somesite.org" → "https://somesite.org"
  */
 function _extractUrlFromInstruction(instruction) {
-  const text = instruction.toLowerCase().trim();
+  const text = (instruction || '').toLowerCase().trim();
 
   // 1. Explicit URLs
   const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
   if (urlMatch) return urlMatch[0];
 
-  // 2. Domain patterns (e.g., example.org, irctc.co.in, leetcode.com, site.io)
+  // 2. Domain patterns (e.g. example.org, test.io, myportal.in)
   const domainMatch = instruction.match(/\b([a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)\b/);
   if (domainMatch) {
     const domain = domainMatch[1].toLowerCase();
-    if (!['e.g', 'i.e', 'etc.com', 'potd.com'].includes(domain)) {
+    if (!['e.g', 'i.e', 'etc.com'].includes(domain)) {
       return `https://${domain}`;
     }
   }
 
-  // 3. Comprehensive directory of top services & destinations
-  const SITE_MAP = {
-    // Coding & Development
-    'leetcode':       'https://leetcode.com/problemset/',
-    'potd':           'https://leetcode.com/problemset/',
-    'hackerrank':     'https://www.hackerrank.com',
-    'codeforces':     'https://codeforces.com',
-    'geeksforgeeks':  'https://www.geeksforgeeks.org',
-    'gfg':            'https://www.geeksforgeeks.org',
-    'codechef':       'https://www.codechef.com',
-    'github':         'https://github.com',
-    'gitlab':         'https://gitlab.com',
-    'stackoverflow':  'https://stackoverflow.com',
-    'stack overflow': 'https://stackoverflow.com',
-    
-    // Travel & Ticket Booking
-    'irctc':          'https://www.irctc.co.in',
-    'railway':        'https://www.irctc.co.in',
-    'train ticket':   'https://www.irctc.co.in',
-    'bookmyshow':     'https://in.bookmyshow.com',
-    'movie ticket':   'https://in.bookmyshow.com',
-    'makemytrip':     'https://www.makemytrip.com',
-    'redbus':         'https://www.redbus.in',
-    'goibibo':        'https://www.goibibo.com',
-    'cleartrip':      'https://www.cleartrip.com',
-    'ixigo':          'https://www.ixigo.com',
-    'expedia':        'https://www.expedia.com',
-    'booking.com':    'https://www.booking.com',
-    
-    // Shopping & E-Commerce
-    'amazon':         'https://www.amazon.com',
-    'flipkart':       'https://www.flipkart.com',
-    'myntra':         'https://www.myntra.com',
-    'ajio':           'https://www.ajio.com',
-    'meesho':         'https://www.meesho.com',
-    'swiggy':         'https://www.swiggy.com',
-    'zomato':         'https://www.zomato.com',
-    'blinkit':        'https://blinkit.com',
-    'zepto':          'https://www.zeptonow.com',
-    
-    // General, Search & Media
-    'youtube':        'https://www.youtube.com',
-    'google':         'https://www.google.com',
-    'instagram':      'https://www.instagram.com',
-    'facebook':       'https://www.facebook.com',
-    'twitter':        'https://www.twitter.com',
-    'x.com':          'https://www.x.com',
-    'reddit':         'https://www.reddit.com',
-    'linkedin':       'https://www.linkedin.com',
-    'netflix':        'https://www.netflix.com',
-    'spotify':        'https://www.spotify.com',
-    'whatsapp':       'https://web.whatsapp.com',
-    'gmail':          'https://mail.google.com',
-    'wikipedia':      'https://www.wikipedia.org',
-    'chatgpt':        'https://chat.openai.com',
-    'pinterest':      'https://www.pinterest.com',
-    'twitch':         'https://www.twitch.tv',
+  // 3. Known platform shortcuts
+  const PLATFORMS = {
+    instagram: 'https://www.instagram.com',
+    insta: 'https://www.instagram.com',
+    twitter: 'https://twitter.com',
+    x: 'https://x.com',
+    github: 'https://github.com',
+    linkedin: 'https://www.linkedin.com',
+    amazon: 'https://www.amazon.com',
+    youtube: 'https://www.youtube.com',
+    facebook: 'https://www.facebook.com',
+    reddit: 'https://www.reddit.com',
+    leetcode: 'https://leetcode.com',
+    irctc: 'https://www.irctc.co.in',
+    google: 'https://www.google.com',
   };
 
-  for (const [name, url] of Object.entries(SITE_MAP)) {
-    if (text.includes(name)) return url;
+  for (const [key, domainUrl] of Object.entries(PLATFORMS)) {
+    if (new RegExp(`\\b${key}\\b`, 'i').test(text)) {
+      return domainUrl;
+    }
   }
 
-  // 4. Intent & command pattern matching: "open <site>", "go to <site>", "visit <site>"
+  // 4. Dynamic target command matching: "open <site>", "go to <site>", "visit <site>"
   const openMatch = text.match(/(?:open|go to|visit|launch|navigate to)\s+([a-zA-Z0-9_-]+)/i);
   if (openMatch) {
     const rawTarget = openMatch[1].toLowerCase().trim();
-    if (SITE_MAP[rawTarget]) return SITE_MAP[rawTarget];
-    // If user asks to open an unfamiliar site like "open foo", attempt standard web URL
-    if (rawTarget.length > 2 && !['site', 'page', 'website', 'tab', 'browser', 'link', 'url'].includes(rawTarget)) {
+    if (rawTarget.length > 2 && !['site', 'page', 'website', 'tab', 'browser', 'link', 'url', 'the', 'this', 'that'].includes(rawTarget)) {
       return `https://www.${rawTarget}.com`;
     }
   }
 
-  // 5. Semantic intent heuristics
-  if (/\b(play|song|music|video|listen|track)\b/i.test(text)) {
-    return 'https://www.youtube.com';
-  }
-  if (/\b(search|google|look up|who is|what is|where is)\b/i.test(text)) {
-    return 'https://www.google.com';
-  }
-  if (/\b(buy|order|purchase|price of)\b/i.test(text)) {
-    return 'https://www.amazon.com';
-  }
-  if (/\b(flight|fly to)\b/i.test(text)) {
-    return 'https://www.google.com/travel/flights';
+  return null; // Graceful fallback to search engine
+}
+
+/**
+ * Lightweight on-device PII tokenizer for use in the background script
+ * when no content script is available (e.g. restricted tab like chrome://newtab).
+ * Covers the most critical PII patterns found in user instructions.
+ * Returns { sanitized: string, tokenMap: object }
+ */
+function _sanitizeInstructionInBackground(text) {
+  if (!text || typeof text !== 'string') return { sanitized: text, tokenMap: {} };
+
+  const tokenMap = {};
+  let result = text;
+  let counter = 0;
+
+  const _tok = (label) => {
+    const id = Math.random().toString(36).substring(2, 6);
+    return `[${label}_${id}]`;
+  };
+
+  // 1. Social usernames in natural language phrases (e.g. "profile for yuvraj_rauniyar15", "follow yuvraj_rauniyar15")
+  const TARGET_REGEX = /(?:follow(?:ing)?|request to|profile (?:for|of)?|user(?:name)?|account|message|dm|visit|target)\s+@?([a-zA-Z0-9_.]{3,35})\b/gi;
+  const reservedWords = [
+    'the', 'this', 'that', 'page', 'profile', 'user', 'site', 'website', 'account',
+    'tab', 'browser', 'feed', 'post', 'story', 'reel', 'explore', 'home', 'request',
+    'button', 'link', 'instagram', 'twitter', 'facebook', 'linkedin', 'github', 'amazon', 'google'
+  ];
+  let tm;
+  while ((tm = TARGET_REGEX.exec(result)) !== null) {
+    const handle = tm[1];
+    if (!reservedWords.includes(handle.toLowerCase())) {
+      let token = Object.keys(tokenMap).find(k => tokenMap[k] === handle);
+      if (!token) {
+        token = _tok('TARGET_USER');
+        tokenMap[token] = handle;
+      }
+      result = result.replaceAll(handle, token);
+    }
   }
 
-  return null; // Return null so fallback to Google Search query occurs cleanly
+  const INLINE_PATTERNS = [
+    // UPI ID (must be before EMAIL to avoid overlap)
+    { label: 'UPI_ID',      regex: /[a-zA-Z0-9.\-_]+@(?:oksbi|okhdfcbank|okicici|okaxis|ybl|paytm|ibl|upi|axl|sbi|apl)\b/g },
+    // Email
+    { label: 'EMAIL',       regex: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g },
+    // Phone (India + international)
+    { label: 'PHONE',       regex: /(?:\+91[\s\-.]?)?\b\d{5}[\s\-.]?\d{5}\b|\+\d{1,3}[\s\-.]?\d{6,12}/g },
+    // Credit / Debit card
+    { label: 'CREDIT_CARD', regex: /\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b/g },
+    // Aadhaar (12 digit)
+    { label: 'AADHAAR',     regex: /\b[2-9]\d{3}[\s\-]?\d{4}[\s\-]?\d{4}\b/g },
+    // PAN
+    { label: 'PAN',         regex: /\b[A-Z]{5}\d{4}[A-Z]\b/g },
+    // IFSC
+    { label: 'IFSC_CODE',   regex: /\b[A-Z]{4}0[A-Z0-9]{6}\b/g },
+    // Social profile URLs (e.g. instagram.com/user, twitter.com/user)
+    { label: 'TARGET_USER', regex: /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com|twitter\.com|x\.com|github\.com|threads\.net|linkedin\.com\/in)\/([a-zA-Z0-9_.]{3,35})\/?/gi },
+    // PIN / OTP / CVV indicators
+    { label: 'PIN',         regex: /\b(?:pin|cvv|otp)[\s:=]+(\d{3,6})\b/gi },
+    // Password indicators
+    { label: 'PASSWORD',    regex: /\b(?:password|pass)[\s:=]+(\S+)\b/gi },
+    // @mentions
+    { label: 'USERNAME',    regex: /@([a-zA-Z0-9_.]{3,35})\b/g },
+  ];
+
+  for (const { label, regex } of INLINE_PATTERNS) {
+    regex.lastIndex = 0;
+    result = result.replace(regex, (match) => {
+      // Check if already tokenized
+      const existing = Object.keys(tokenMap).find(k => tokenMap[k] === match);
+      if (existing) return existing;
+      const token = _tok(label);
+      tokenMap[token] = match;
+      counter++;
+      return token;
+    });
+  }
+
+  return { sanitized: result, tokenMap };
+}
+
+/**
+ * Build a minimal heuristic workflow plan when the /api/plan server is unreachable.
+ * Ensures the user can still proceed even in offline scenarios.
+ */
+function _buildHeuristicPlan(instruction) {
+  const text = (instruction || '').toLowerCase();
+  const targetUrl = _extractUrlFromInstruction(instruction);
+  const isComplex = /\b(book|ticket|train|flight|potd|leetcode|hotel|order|buy|reservation|checkout|solve|problem|register)\b/i.test(text);
+
+  const steps = [];
+  if (targetUrl) {
+    steps.push({ step: 1, action: 'Navigate', detail: `Open ${targetUrl}` });
+  }
+  steps.push({ step: steps.length + 1, action: 'Analyze page', detail: 'Scan page for relevant elements and PII' });
+  steps.push({ step: steps.length + 1, action: 'Execute task', detail: 'Perform the requested action on the page' });
+  if (isComplex) {
+    steps.push({ step: steps.length + 1, action: 'Verify & complete', detail: 'Confirm completion and review result' });
+  }
+
+  return {
+    target_url: targetUrl || '',
+    task_summary: instruction.length > 80 ? instruction.substring(0, 77) + '...' : instruction,
+    steps,
+    estimated_steps: isComplex ? 20 : 10,
+    complexity: isComplex ? 'complex' : 'simple',
+    warnings: ['Plan generated locally — server unavailable. AI analysis was skipped.'],
+    latency_ms: 0,
+    error: null,
+  };
 }
 
 async function _getActiveTabId() {
@@ -645,6 +923,7 @@ async function _ensureContentScript(tabId) {
         files: [
           'lib/vault.js',
           'lib/biometric-gate.js',
+          'lib/redaction-engine.js',
           'lib/pii-scanner.js',
           'lib/dom-analyzer.js',
           'lib/action-executor.js',
@@ -654,7 +933,7 @@ async function _ensureContentScript(tabId) {
       await chrome.scripting.insertCSS({
         target: { tabId },
         files: ['styles/content.css'],
-      }).catch(() => {});
+      });
       await new Promise(r => setTimeout(r, 150));
       return;
     } catch (injectErr) {
@@ -756,23 +1035,50 @@ async function _sendToContentScript(tabId, type, payload = {}, retries = 3) {
   }
 }
 
-// ── Offscreen document management ────────────────────────────────────
+// ── Offscreen & Redaction management ──────────────────────────────────
 
 async function _ensureOffscreen() {
-  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
-  if (contexts.length === 0) {
+  if (chrome.offscreen && typeof chrome.offscreen.hasDocument === 'function') {
+    if (await chrome.offscreen.hasDocument()) return;
+  }
+  try {
+    const contexts = await chrome.runtime.getContexts?.({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    if (contexts && contexts.length > 0) return;
+  } catch {}
+
+  try {
     await chrome.offscreen.createDocument({
       url: 'offscreen/offscreen.html',
       reasons: ['DOM_PARSER'],
       justification: 'Canvas redaction',
     });
+    // Settle delay for offscreen scripts to register listeners
+    await new Promise(r => setTimeout(r, 120));
+  } catch (err) {
+    if (!err.message?.includes('single offscreen document')) {
+      throw err;
+    }
   }
 }
 
-async function _redactScreenshot(imageDataUrl, regions) {
+async function _redactScreenshot(imageDataUrl, regions, tabId = null) {
   if (!regions || regions.length === 0) {
     return { sanitizedImage: imageDataUrl, manifest: { redactions: [] } };
   }
+
+  // Strategy 1: Direct native canvas redaction via Content Script (Fastest & Most Reliable)
+  if (tabId) {
+    try {
+      const res = await _sendToContentScript(tabId, 'REDACT_IMAGE', { imageDataUrl, regions, options: { blurRadius: 20 } }, 1);
+      if (res && res.sanitizedImage) {
+        return res;
+      }
+    } catch (tabErr) {
+      console.warn('[PrivacyVision] Content script canvas redaction fallback to offscreen:', tabErr.message);
+    }
+  }
+
+  // Strategy 2: Offscreen Document
   await _ensureOffscreen();
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
@@ -788,21 +1094,37 @@ async function _redactScreenshot(imageDataUrl, regions) {
 
 // ── Server communication ─────────────────────────────────────────────
 
-async function _sendToServerWithTimeout(image, summary, manifest, goal, history = []) {
+async function _sendToServerWithTimeout(
+  image, summary, manifest, goal, history = [],
+  localTelemetry = null,
+  domStructured = null,   // ← Structured DOM JSON for AI-2 selector accuracy
+  planSteps = null        // ← Plan steps to pre-seed AI context
+) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), SERVER_TIMEOUT_MS);
 
   try {
+    const body = {
+      image,
+      dom_summary: summary,
+      redaction_manifest: manifest,
+      user_goal: goal,
+      action_history: history,
+      local_telemetry: localTelemetry,
+    };
+    // Include structured DOM if available (preferred over raw text)
+    if (domStructured && typeof domStructured === 'object') {
+      body.dom_structured = domStructured;
+    }
+    // Include plan steps for context pre-seeding (only on first call when history is empty)
+    if (planSteps && Array.isArray(planSteps) && history.length === 0) {
+      body.plan_steps = planSteps;
+    }
+
     const response = await fetch(`${serverUrl}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image,
-        dom_summary: summary,
-        redaction_manifest: manifest,
-        user_goal: goal,
-        action_history: history,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
     
@@ -826,6 +1148,41 @@ async function _sendToServerWithTimeout(image, summary, manifest, goal, history 
     };
   }
 }
+
+/**
+ * Smart AI-2 Retry: calls /api/retry-action when a DOM action fails.
+ * Asks AI-2 to pick an alternative selector from the current DOM.
+ * Returns {success: bool, corrected_action: object | null}
+ */
+async function _retryFailedAction(failedAction, pageData, userGoal, failureReason) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const body = {
+      failed_action: failedAction,
+      dom_summary: pageData.textSummary || '',
+      user_goal: userGoal || '',
+      failure_reason: failureReason || 'Unknown DOM injection error',
+    };
+    if (pageData.domStructured) {
+      body.dom_structured = pageData.domStructured;
+    }
+    const res = await fetch(`${serverUrl}/api/retry-action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.warn('[PrivacyVision] /api/retry-action failed:', err.message);
+    return null;
+  }
+}
+
 
 // ── Audit Formatting ─────────────────────────────────────────────────
 function _formatAuditLocal(findings, tokenMap = {}) {
@@ -851,8 +1208,14 @@ function _formatAuditCloud(sanitizedGoal, manifest, domAnalysis, serverResponse)
   lines.push(`• Redacted Base64 JPEG frame`);
   lines.push(`• ${redactionCount} visual area(s) blacked out / blurred on-device`);
   if (manifest?.redactions && manifest.redactions.length > 0) {
-    const tokens = manifest.redactions.map(r => r.token || r.type).slice(0, 6).join(', ');
-    lines.push(`• Masked Tokens Sent: ${tokens}`);
+    const faceCount = manifest.redactions.filter(r => r.type === 'FACE_IMAGE' || r.type === 'FACE').length;
+    const textCount = redactionCount - faceCount;
+    const detailParts = [];
+    if (faceCount > 0) detailParts.push(`${faceCount} Face/Avatar(s) Blurred`);
+    if (textCount > 0) detailParts.push(`${textCount} PII Secret(s) Blacked Out`);
+    if (detailParts.length > 0) {
+      lines.push(`• Redaction Breakdown: ${detailParts.join(' | ')}`);
+    }
   }
   
   lines.push(`\n📋 Essential Page Context (Important Info Only):`);

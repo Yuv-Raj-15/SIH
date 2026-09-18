@@ -270,3 +270,36 @@ def validate_actions_against_dom(actions: list[dict], dom_summary: str) -> list[
         validated.append(action_copy)
     
     return validated
+
+
+def parse_workflow_plan(raw_response: str) -> dict:
+    """
+    Parse a workflow plan response from the planner model into a dict.
+    Supports markdown code blocks, partial JSON, trailing commas, and unescaped quotes.
+    """
+    if not raw_response or not raw_response.strip():
+        return {}
+
+    text = raw_response.strip()
+
+    # 1. Direct or repaired parse
+    parsed = _try_parse_json(text)
+    if parsed and isinstance(parsed, dict):
+        return parsed
+
+    # 2. Extract from markdown code block
+    code_block_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    if code_block_match:
+        parsed = _try_parse_json(code_block_match.group(1).strip())
+        if parsed and isinstance(parsed, dict):
+            return parsed
+
+    # 3. Find JSON object in text
+    json_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if json_match:
+        parsed = _try_parse_json(json_match.group(0))
+        if parsed and isinstance(parsed, dict):
+            return parsed
+
+    return {}
+

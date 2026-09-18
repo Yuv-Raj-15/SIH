@@ -28,6 +28,31 @@
   white-space: nowrap;
 }
 
+/* Face & Avatar live visual overlay */
+.pv-redaction-overlay[data-pii-type="FACE_IMAGE"],
+.pv-redaction-overlay[data-pii-type="FACE"] {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px dashed #22c55e;
+  border-radius: 12px;
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.45);
+  z-index: 2147483647;
+}
+
+.pv-redaction-overlay[data-pii-type="FACE_IMAGE"]::after,
+.pv-redaction-overlay[data-pii-type="FACE"]::after {
+  content: '🛡️ FACE MASKED';
+  background: #15803d;
+  border: 1px solid #22c55e;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
 /* Agent action indicator */
 .pv-action-indicator {
   position: absolute;

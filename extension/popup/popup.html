@@ -7,118 +7,267 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <!-- Header -->
+
+  <!-- Classic Professional Header -->
   <header class="header">
     <div class="header__brand">
-      <div class="header__logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-          <circle cx="12" cy="16" r="2"></circle>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      <div class="header__logo-container">
+        <svg class="header__logo-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <circle cx="12" cy="11" r="3"/>
+          <path d="M12 8v-2M12 16v-2M8 11H6M18 11h-2"/>
         </svg>
       </div>
       <div class="header__text">
-        <h1 class="header__title">PrivacyVision Agent</h1>
-        <span class="header__subtitle">SIH 2026 — On-Device Biometrics & Local Vault</span>
+        <div class="header__title-row">
+          <h1 class="header__title">PRIVACYVISION</h1>
+          <span class="header__version-pill">v2.0</span>
+        </div>
+        <span class="header__subtitle">Autonomous Privacy Browser Agent</span>
       </div>
     </div>
-    <div class="header__status">
-      <span class="status-dot"></span>
-      <span>AIRTIGHT LOCAL</span>
+    <div class="header__engine-status">
+      <div class="engine-badge-cluster">
+        <span class="engine-pill pill-ai1" title="Perception & Reasoning Model (Key 1)">• Reasoning</span>
+        <span class="engine-pill pill-ai2" title="Decision & Planning Model (Key 2)">• Decision</span>
+      </div>
     </div>
   </header>
 
-  <!-- Tabs -->
-  <nav class="tabs">
-    <button class="tab-btn active" data-target="tab-run">
-      <span>🤖</span> Run Agent
+  <!-- Navigation Tabs -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-target="tab-run" id="nav-run">
+      <span class="tab-label">Command</span>
     </button>
-    <button class="tab-btn" data-target="tab-vault">
-      <span>🔒</span> Vault & Biometrics
+    <button class="tab-btn" data-target="tab-masking" id="nav-masking">
+      <span class="tab-label">Privacy Shield</span>
+      <span class="tab-counter-badge" id="masking-badge">0</span>
     </button>
-    <button class="tab-btn" data-target="tab-audit">
-      <span>🛡️</span> Zero-Leak Audit
+    <button class="tab-btn" data-target="tab-vault" id="nav-vault">
+      <span class="tab-label">Local Vault</span>
+    </button>
+    <button class="tab-btn" data-target="tab-audit" id="nav-audit">
+      <span class="tab-label">Audit Log</span>
     </button>
   </nav>
 
-  <main class="content">
-    
-    <!-- Tab: Run Agent -->
+  <!-- Main Viewport -->
+  <main class="main-viewport">
+
+    <!-- TAB 1: RUN COMMAND AGENT -->
     <section id="tab-run" class="tab-pane active">
-      <div class="input-group">
-        <label for="chat-input" class="input-label">Natural Language Instruction</label>
-        <textarea id="chat-input" class="textarea" placeholder="e.g. Fill transfer form and pay ₹25,000, or login to Instagram" rows="3"></textarea>
+      
+      <!-- Quick Prompt Suggestions -->
+      <div class="quick-chips-row">
+        <span class="chips-label">• Select Quick Scenario</span>
+        <div class="chips-scroll">
+          <button class="prompt-chip" data-prompt="Fill transfer form and pay ₹25,000 to Rahul">Bank Transfer</button>
+          <button class="prompt-chip" data-prompt="Search running shoes and add first item to cart">Shop & Cart</button>
+          <button class="prompt-chip" data-prompt="Login to portal using saved vault credentials">Vault Login</button>
+          <button class="prompt-chip" data-prompt="Dismiss any cookie overlays and analyze page">Clear Obstacles</button>
+        </div>
       </div>
 
-      <button id="btn-run" class="btn btn-primary" style="margin-top: 14px;">
-        ▶ Run Autonomous Agent
+      <!-- Natural Language Goal Input -->
+      <div class="input-card">
+        <label for="chat-input" class="input-card-label">
+          <span>Objective / Instruction</span>
+          <span class="stock-badge">• Dual-AI Pipeline</span>
+        </label>
+        <div class="textarea-wrapper">
+          <textarea id="chat-input" class="standard-textarea" placeholder="Enter instructions (e.g. Fill transfer form and pay ₹25,000 to Rahul, or add to cart and checkout)" rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- Primary Action Button -->
+      <button id="btn-run" class="btn btn-primary">
+        <span class="btn-icon-left">🧠</span>
+        <span class="btn-text">Run Agent</span>
+        <span class="btn-icon">▶</span>
       </button>
 
-      <!-- Latency Breakdown -->
-      <div id="latency-box" class="info-box latency-box" style="display: none; margin-top: 12px;">
-        <div class="info-box-header">⚡ On-Device Latency Breakdown:</div>
-        <div class="latency-grid">
-          <div>• Local NER Scanner: <span id="lat-ner">--</span></div>
-          <div>• Redaction Engine: <span id="lat-redaction">--</span></div>
-          <div>• Cloud VLM (Luna): <span id="lat-vlm">--</span></div>
-          <div>• Action Injector: <span id="lat-dom">--</span></div>
+      <!-- Multi-Stage Execution Tracker -->
+      <div class="pipeline-card" id="pipeline-card">
+        <div class="pipeline-header">
+          <span class="pipeline-title">Execution Lifecycle</span>
+          <span class="pipeline-step-badge" id="pipeline-step-counter">Ready</span>
+        </div>
+        <div class="pipeline-stages">
+          <div class="p-stage" id="stage-local">
+            <div class="p-dot">1</div>
+            <span class="p-name">Local Masking</span>
+          </div>
+          <div class="p-connector" id="conn-1"></div>
+          <div class="p-stage" id="stage-ai1">
+            <div class="p-dot">2</div>
+            <span class="p-name">Reasoning</span>
+          </div>
+          <div class="p-connector" id="conn-2"></div>
+          <div class="p-stage" id="stage-ai2">
+            <div class="p-dot">3</div>
+            <span class="p-name">Decision</span>
+          </div>
+          <div class="p-connector" id="conn-3"></div>
+          <div class="p-stage" id="stage-inject">
+            <div class="p-dot">4</div>
+            <span class="p-name">Execution</span>
+          </div>
         </div>
       </div>
 
-      <!-- Privacy Status -->
-      <div id="privacy-status" class="status-box status-success" style="margin-top: 12px;">
-        <div class="status-box-header">
-          <span>✓ Local Vault & Biometrics Ready</span>
-          <span class="badge badge-success">0 BYTES LEAKED</span>
+      <!-- Execution Latency Strip -->
+      <div id="latency-box" class="telemetry-bar" style="display: none;">
+        <div class="telemetry-item">
+          <span class="t-label">Local NER</span>
+          <span class="t-val" id="lat-ner">--</span>
         </div>
-        <div class="status-box-body" id="privacy-status-text">
-          Zero plaintext passwords or UPI PINs leave your machine. Sensitive actions require your face recognition.
+        <div class="telemetry-item">
+          <span class="t-label">Redaction</span>
+          <span class="t-val" id="lat-redaction">--</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="t-label">Reasoning</span>
+          <span class="t-val" id="lat-reasoning">--</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="t-label">Decision</span>
+          <span class="t-val" id="lat-decision">--</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="t-label">DOM Inject</span>
+          <span class="t-val" id="lat-dom">--</span>
         </div>
       </div>
+
+      <!-- Status & Activity Card -->
+      <div id="privacy-status" class="status-card">
+        <div class="status-card-header">
+          <div class="status-indicator-cluster">
+            <span class="status-dot"></span>
+            <span class="status-title" id="status-title">System Ready</span>
+          </div>
+          <span class="badge badge-success" id="leak-badge">0 BYTES LEAKED</span>
+        </div>
+        <div class="status-card-body" id="privacy-status-text">
+          Zero plaintext passwords or personal identifiers leave this device. Sensitive fields are masked locally in memory before analysis.
+        </div>
+      </div>
+
+      <!-- Quick Local Masking Highlight Card -->
+      <div class="quick-mask-strip" id="quick-mask-strip" style="display: none;">
+        <div class="quick-mask-left">
+          <span class="qm-icon">🛡️</span>
+          <div class="qm-text">
+            <strong id="qm-title">Local Protection Active</strong>
+            <span id="qm-subtitle">Sensitive entities masked in memory</span>
+          </div>
+        </div>
+        <button class="btn btn-tiny btn-outline" id="btn-jump-masking">View Details</button>
+      </div>
+
     </section>
 
-    <!-- Tab: Encrypted Vault & Biometrics -->
+    <!-- TAB 2: LOCAL PRIVACY & MASKING SHOWCASE -->
+    <section id="tab-masking" class="tab-pane">
+      
+      <!-- Showcase Header -->
+      <div class="showcase-hero">
+        <div class="showcase-icon">🛡️</div>
+        <div class="showcase-meta">
+          <h2 class="showcase-title">On-Device Privacy & Redaction</h2>
+          <p class="showcase-desc">Audit report of all data masked locally before transmission to backend models.</p>
+        </div>
+      </div>
+
+      <!-- Security Metrics Grid -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-value text-success">0 BYTES</span>
+          <span class="metric-label">Plaintext Leaked</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-value text-primary" id="metric-masked-count">0</span>
+          <span class="metric-label">Entities Masked</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-value text-neutral">100% LOCAL</span>
+          <span class="metric-label">Memory Boundary</span>
+        </div>
+      </div>
+
+      <!-- What Local Model Has Done: Breakdown Ledger -->
+      <div class="ledger-card">
+        <div class="ledger-header">
+          <span class="ledger-title">Local Model Protection Ledger</span>
+          <span class="ledger-badge" id="ledger-entity-count">0 Items Protected</span>
+        </div>
+        <div class="ledger-list" id="ledger-list">
+          <div class="empty-placeholder">
+            <span>Run an agent instruction to view the on-device masking breakdown.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Visual Masking Frame Preview -->
+      <div class="visual-mask-card">
+        <div class="visual-mask-header">
+          <span>Masked Screenshot Preview</span>
+          <span class="badge badge-blackout">Redacted Canvas</span>
+        </div>
+        <div class="visual-mask-wrapper" id="visual-mask-wrapper">
+          <img id="audit-masked-img" src="" alt="Masked Screenshot Preview" style="display: none;">
+          <div class="visual-placeholder" id="visual-placeholder">
+            <span>Masked screenshot will appear here after page analysis.</span>
+          </div>
+        </div>
+        <div class="visual-mask-footer">
+          <span>Solid blackouts shield passwords and PINs; Gaussian blur shields photos and personal identifiers.</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 3: ENCRYPTED LOCAL VAULT & BIOMETRICS -->
     <section id="tab-vault" class="tab-pane">
       
-      <!-- Biometric Face Enrollment Section -->
+      <!-- Biometric Face Gate Section -->
       <div class="card-box bio-enroll-box">
         <div class="card-box-header">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span>📸</span>
-            <strong>On-Device Face Biometrics</strong>
+          <div class="bio-header-left">
+            <span class="bio-icon">📸</span>
+            <div>
+              <strong>On-Device Face Biometrics</strong>
+              <div class="tiny-note">Stored strictly on-device for high-security payment authorizations.</div>
+            </div>
           </div>
           <span id="face-status-badge" class="badge badge-secondary">CHECKING...</span>
         </div>
         <div class="bio-enroll-content">
-          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-            <button id="btn-enroll-face" class="btn btn-sm btn-outline" style="flex: 1;">
-              📸 Manage Face Biometrics
+          <div class="bio-action-row">
+            <button id="btn-enroll-face" class="btn btn-sm btn-outline">
+              Manage Face Biometrics
             </button>
             <button id="btn-clear-face" class="btn btn-sm btn-danger" style="display: none;">
               Clear
             </button>
           </div>
-          <div class="tiny-note">Opens dedicated camera authorization tab. Stored 100% on-device for password & payment verification.</div>
         </div>
       </div>
 
-      <!-- Vault Controls -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin: 14px 0 8px;">
-        <div style="font-weight: 700; font-size: 0.95rem; color: #1e293b;">
-          🔑 Saved Local Credentials
+      <!-- Vault Controls Header -->
+      <div class="vault-controls-row">
+        <div class="vault-section-title">
+          <span>Stored Credentials</span>
+          <span class="vault-chip">AES-256-GCM Vault</span>
         </div>
-        <button id="btn-show-add-modal" class="btn btn-sm btn-primary" style="width: auto; padding: 6px 12px;">
+        <button id="btn-show-add-modal" class="btn btn-sm btn-primary">
           + Add Account
         </button>
       </div>
 
-      <div class="info-box vault-info" style="margin-bottom: 10px;">
-        🔒 <strong>Hardware-Isolated AES-256-GCM Vault:</strong> Plaintext credentials exist only inside your PC's memory.
-      </div>
-
       <!-- Vault List -->
       <div class="vault-list" id="vault-list">
-        <div class="placeholder-text" style="padding: 10px; text-align: center;">Loading encrypted vault...</div>
+        <div class="empty-placeholder">Loading stored credentials...</div>
       </div>
 
       <!-- Add Credential Modal Overlay -->
@@ -130,45 +279,46 @@
           </div>
           <form id="form-add-cred">
             <div class="form-row">
-              <label>Domain / Site</label>
-              <input type="text" id="add-domain" placeholder="e.g. instagram.com or securebank" required>
+              <label>Domain / Service</label>
+              <input type="text" id="add-domain" placeholder="e.g. securebank or amazon.com" required>
             </div>
             <div class="form-row">
-              <label>Account Name</label>
-              <input type="text" id="add-name" placeholder="e.g. Instagram Personal" required>
+              <label>Account Label</label>
+              <input type="text" id="add-name" placeholder="e.g. Primary Banking Account" required>
             </div>
             <div class="form-row">
               <label>Category</label>
               <select id="add-category">
-                <option value="social">Social Media</option>
-                <option value="banking">Banking & Cards</option>
+                <option value="banking">Banking & Transfers</option>
                 <option value="upi">UPI Payment</option>
+                <option value="shopping">Shopping & E-Commerce</option>
+                <option value="social">Social Media</option>
                 <option value="general">General Website</option>
               </select>
             </div>
             <div class="form-row">
               <label>Username / Email / UPI ID</label>
-              <input type="text" id="add-username" placeholder="Username, email, or UPI handle">
+              <input type="text" id="add-username" placeholder="Username or email handle">
             </div>
             <div class="form-row">
-              <label>Password / Secret</label>
+              <label>Password</label>
               <input type="password" id="add-password" placeholder="Account password">
             </div>
             <div class="form-row">
-              <label>UPI PIN / Card CVV</label>
-              <input type="password" id="add-pin" placeholder="6-digit UPI PIN or 3-digit CVV" maxlength="6">
+              <label>UPI PIN / CVV</label>
+              <input type="password" id="add-pin" placeholder="PIN or CVV" maxlength="6">
             </div>
             <div class="form-row">
-              <label>Bank Account No. (Optional)</label>
+              <label>Account Number (Optional)</label>
               <input type="text" id="add-account" placeholder="e.g. 9876543210123456">
             </div>
             <div class="form-row">
               <label>IFSC Code (Optional)</label>
               <input type="text" id="add-ifsc" placeholder="e.g. HDFC0004567">
             </div>
-            <div style="display: flex; gap: 8px; margin-top: 12px;">
-              <button type="button" id="btn-cancel-add" class="btn btn-secondary" style="flex: 1;">Cancel</button>
-              <button type="submit" class="btn btn-primary" style="flex: 1;">Encrypt & Save</button>
+            <div class="modal-btn-row">
+              <button type="button" id="btn-cancel-add" class="btn btn-secondary">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save to Vault</button>
             </div>
           </form>
         </div>
@@ -176,46 +326,36 @@
 
     </section>
 
-    <!-- Tab: Zero-Leak Audit -->
+    <!-- TAB 4: LIVE TELEMETRY & ZERO-LEAK AUDIT -->
     <section id="tab-audit" class="tab-pane">
-      <div class="info-box" style="margin-top: 4px;">
-        🛡️ <strong>Live Zero-Leakage Audit:</strong> On-device masked visual frame & encrypted tokens vs sanitized server context.
+      <div class="audit-intro">
+        Audit log displaying data retained locally versus sanitized metadata transmitted for model inference.
       </div>
-      
+
       <div class="audit-grid">
-        <!-- Local Processing Column -->
+        <!-- Local Device Boundary Column -->
         <div class="audit-col local-col">
           <div class="audit-col-header">
-            <span>💻 Processed Locally</span>
-            <span class="badge badge-success">0 BYTES LEAKED</span>
+            <span>Local Device Boundary</span>
+            <span class="badge badge-success">RETAINED</span>
           </div>
-          <div class="audit-content" id="audit-local">
-            <!-- Masked Image Preview -->
-            <div id="audit-image-container" style="display: none; margin-bottom: 8px;">
-              <div class="audit-section-subhead">
-                🖼️ Masked Screenshot (Sent to AI):
-              </div>
-              <div class="audit-image-wrapper">
-                <img id="audit-masked-img" src="" alt="Masked Screenshot Preview">
-                <div class="audit-image-badge">🔒 Blacked Out / Blurred</div>
-              </div>
-            </div>
+          <div class="audit-content">
             <div id="audit-local-text" class="audit-text-block">
-              <div class="placeholder-text">Run agent to see on-device masked data...</div>
+              <div class="empty-placeholder">Run agent to inspect local boundary...</div>
             </div>
           </div>
         </div>
 
-        <!-- Server Processing Column -->
+        <!-- Cloud Sanitized Context Column -->
         <div class="audit-col cloud-col">
           <div class="audit-col-header">
-            <span>☁️ Server Context (Essential Info)</span>
+            <span>Transmitted Context</span>
             <span class="badge badge-info">SANITIZED</span>
           </div>
-          <div class="audit-content" id="audit-cloud">
-             <div id="audit-cloud-text" class="audit-text-block">
-               <div class="placeholder-text">Run agent to see sanitized server payload...</div>
-             </div>
+          <div class="audit-content">
+            <div id="audit-cloud-text" class="audit-text-block">
+              <div class="empty-placeholder">Run agent to inspect transmitted payload...</div>
+            </div>
           </div>
         </div>
       </div>

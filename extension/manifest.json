@@ -23,6 +23,7 @@
       "js": [
         "lib/vault.js",
         "lib/biometric-gate.js",
+        "lib/redaction-engine.js",
         "lib/pii-scanner.js",
         "lib/dom-analyzer.js",
         "lib/action-executor.js",

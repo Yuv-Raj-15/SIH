@@ -13,40 +13,19 @@ var ActionExecutor = (() => {
 
   function _dismissCommonOverlays() {
     try {
-      // 1. Common cookie / consent accept buttons
-      const cookieSelectors = [
-        '#onetrust-accept-btn-handler',
-        '#accept-cookie-notification',
-        'button[id*="cookie" i][id*="accept" i]',
-        'button[class*="cookie" i][class*="accept" i]',
-        'button[aria-label*="accept all" i]',
-        'button[aria-label*="agree" i]',
-        '.cc-btn.cc-allow',
-        '.js-cookie-consent-agree'
-      ];
-      for (const sel of cookieSelectors) {
-        const btn = document.querySelector(sel);
-        if (btn && typeof btn.click === 'function') {
+      // Semantic dismissal of blocking modals or overlays
+      const dismissButtons = document.querySelectorAll(
+        '[role="dialog"] button[aria-label*="close" i], ' +
+        'dialog[open] button[aria-label*="close" i], ' +
+        'button[aria-label*="dismiss" i], ' +
+        '[data-dismiss="modal"], ' +
+        'button[aria-label*="accept" i][aria-label*="cookie" i]'
+      );
+      for (const btn of dismissButtons) {
+        if (btn && typeof btn.click === 'function' && btn.offsetParent !== null) {
           btn.click();
           break;
         }
-      }
-
-      // 2. Common promo / newsletter dismiss buttons
-      const modalCloseSelectors = [
-        'button[aria-label="Close" i]',
-        'button[aria-label="Dismiss" i]',
-        'button.modal-close',
-        'button.popup-close',
-        '[data-dismiss="modal"]'
-      ];
-      for (const sel of modalCloseSelectors) {
-        try {
-          const btn = document.querySelector(sel);
-          if (btn && typeof btn.click === 'function' && btn.offsetParent !== null) {
-            btn.click();
-          }
-        } catch {}
       }
     } catch {}
   }
@@ -56,13 +35,16 @@ var ActionExecutor = (() => {
    * @param {Array<object>} actions - Array of action objects
    * @returns {Promise<Array<object>>} Results for each action
    */
-  async function executeActions(actions) {
+  async function executeActions(actions, customTokenMap = null) {
+    if (customTokenMap && typeof PIIScanner !== 'undefined' && PIIScanner.registerTokens) {
+      PIIScanner.registerTokens(customTokenMap);
+    }
     _dismissCommonOverlays();
     const results = [];
 
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
-      const result = await _executeOne(action, i);
+      const result = await _executeOne(action, i, customTokenMap);
       results.push(result);
       _actionLog.push({ ...action, result, timestamp: Date.now() });
 
@@ -78,16 +60,16 @@ var ActionExecutor = (() => {
   /**
    * Execute a single action.
    */
-  async function _executeOne(action, index) {
+  async function _executeOne(action, index, customTokenMap = null) {
     const type = (action.type || '').toLowerCase();
 
     try {
       switch (type) {
         case 'click':
-          return await _actionClick(action);
+          return await _actionClick(action, customTokenMap);
         case 'type':
         case 'input':
-          return await _actionType(action);
+          return await _actionType(action, customTokenMap);
         case 'autofill':
         case 'fill_form':
           return await _actionAutofill(action);
@@ -122,20 +104,22 @@ var ActionExecutor = (() => {
 
   // ── Token & Vault De-anonymization (Zero PII leaves browser) ──────
 
-  async function _resolveVaultValue(el, rawValue) {
+  async function _resolveVaultValue(el, rawValue, customTokenMap = null) {
     let value = rawValue || '';
 
-    // 1. Resolve PII tokens from PIIScanner (e.g. [EMAIL_1], [PASSWORD_1], [PHONE_1])
-    if (typeof PIIScanner !== 'undefined' && PIIScanner.getTokenMap) {
-      const tokenMap = PIIScanner.getTokenMap();
-      if (tokenMap && tokenMap[value]) {
-        return tokenMap[value];
-      }
-      // Check if value contains tokens
-      for (const [tok, orig] of Object.entries(tokenMap || {})) {
-        if (value.includes(tok)) {
-          value = value.replaceAll(tok, orig);
-        }
+    // 1. Resolve PII tokens from PIIScanner and customTokenMap (e.g. [EMAIL_1], [PASSWORD_1], [TARGET_USER_...])
+    const tokenMap = {
+      ...(typeof PIIScanner !== 'undefined' && PIIScanner.getTokenMap ? PIIScanner.getTokenMap() : {}),
+      ...(customTokenMap || {})
+    };
+
+    if (tokenMap && tokenMap[value]) {
+      return tokenMap[value];
+    }
+    // Check if value contains tokens
+    for (const [tok, orig] of Object.entries(tokenMap || {})) {
+      if (value.includes(tok)) {
+        value = value.replaceAll(tok, orig);
       }
     }
 
@@ -155,24 +139,30 @@ var ActionExecutor = (() => {
         /password|pwd|pass\b/i.test(combinedAttrs)
       );
 
-      const isPinOrCvv = /pin|cvv|cvc|security.*code|otp/i.test(combinedAttrs);
-      const isCard = /card|pan|account.*num/i.test(combinedAttrs);
+      const isPinOrCvv = /pin|cvv|cvc|security.*code|otp|upipin/i.test(combinedAttrs);
+      const isCard = /card|pan|account.*num|accountnumber|acc_num/i.test(combinedAttrs);
       const isUsernameOrEmail = (
         elType === 'email' ||
         /username|email|account-name/i.test(elAutocomplete) ||
-        /user|email|login|account|phone/i.test(combinedAttrs)
+        /user|email|login|account|phone|uname/i.test(combinedAttrs)
       );
+      const isBeneficiary = /beneficiary|receiver|payee|recipient/i.test(combinedAttrs);
+      const isIfsc = /ifsc|routing|swift/i.test(combinedAttrs);
+      const isAmount = /amount|transfer.*amount/i.test(combinedAttrs);
+      const isRemarks = /remark|purpose|memo/i.test(combinedAttrs);
+      const isUpi = /upi|vpa/i.test(combinedAttrs);
 
-      // Check if value is a placeholder or token representation
+      // Check if value is a placeholder or token representation or blank
       const isPlaceholderOrToken = (
         !value ||
+        value === '' ||
         value === '••••••••' ||
         value === '••••••' ||
-        /^\[?[A-Z0-9_]*(PASS|PWD|SECRET|CRED|PIN|USER|EMAIL|TOKEN)[A-Z0-9_]*\]?$/i.test(value.trim()) ||
-        /^(password|secret|pass|mypassword|user|username|email|enter password)$/i.test(value.trim()) ||
-        value.includes('{{VAULT:') ||
-        value.includes('[PASSWORD') ||
-        value.includes('[CRED_')
+        /^\[?[A-Z0-9_]*(PASS|PWD|SECRET|CRED|PIN|USER|EMAIL|TOKEN|ACCOUNT|IFSC|BENEFICIARY)[A-Z0-9_]*\]?$/i.test((value || '').trim()) ||
+        /^(password|secret|pass|mypassword|user|username|email|enter password|enter pin|account)$/i.test((value || '').trim()) ||
+        (value || '').includes('{{VAULT:') ||
+        (value || '').includes('[PASSWORD') ||
+        (value || '').includes('[CRED_')
       );
 
       try {
@@ -181,7 +171,7 @@ var ActionExecutor = (() => {
           const cred = matches[0].data || {};
 
           // A. Password field - ALWAYS prioritize vault password for current site!
-          if (isPassword || (isPlaceholderOrToken && /pass|pwd/i.test(value))) {
+          if (isPassword || (isPlaceholderOrToken && /pass|pwd/i.test(value || ''))) {
             if (cred.password) {
               console.log('[ActionExecutor] Automatically retrieved password from local vault for', window.location.hostname);
               return cred.password;
@@ -189,19 +179,50 @@ var ActionExecutor = (() => {
           }
 
           // B. PIN / CVV field
-          if (isPinOrCvv || (isPlaceholderOrToken && /pin|cvv/i.test(value))) {
+          if (isPinOrCvv || (isPlaceholderOrToken && /pin|cvv/i.test(value || ''))) {
             if (cred.upiPin) return cred.upiPin;
             if (cred.cvv) return cred.cvv;
+            if (cred.pin) return cred.pin;
           }
 
           // C. Credit card / Account number
-          if (isCard || (isPlaceholderOrToken && /card|account/i.test(value))) {
-            if (cred.cardNumber) return cred.cardNumber;
+          if (isCard || (isPlaceholderOrToken && /card|account/i.test(value || ''))) {
             if (cred.accountNumber) return cred.accountNumber;
+            if (cred.cardNumber) return cred.cardNumber;
+            if (cred.account) return cred.account;
           }
 
-          // D. Username / Email field
-          if ((isUsernameOrEmail && isPlaceholderOrToken) || (isPlaceholderOrToken && /user|email/i.test(value))) {
+          // D. IFSC code
+          if (isIfsc || (isPlaceholderOrToken && /ifsc/i.test(value || ''))) {
+            if (cred.ifsc) return cred.ifsc;
+            if (cred.ifscCode) return cred.ifscCode;
+          }
+
+          // E. Beneficiary name
+          if (isBeneficiary || (isPlaceholderOrToken && /beneficiary|payee/i.test(value || ''))) {
+            if (cred.beneficiary) return cred.beneficiary;
+            if (cred.beneficiaryName) return cred.beneficiaryName;
+            if (cred.name) return cred.name;
+          }
+
+          // F. Amount
+          if (isAmount || (isPlaceholderOrToken && /amount/i.test(value || ''))) {
+            if (cred.amount) return cred.amount;
+            if (cred.defaultAmount) return cred.defaultAmount;
+          }
+
+          // G. Remarks
+          if (isRemarks || (isPlaceholderOrToken && /remark/i.test(value || ''))) {
+            if (cred.remarks) return cred.remarks;
+          }
+
+          // H. UPI ID
+          if (isUpi || (isPlaceholderOrToken && /upi|vpa/i.test(value || ''))) {
+            if (cred.upiId) return cred.upiId;
+          }
+
+          // I. Username / Email field
+          if (isUsernameOrEmail && (isPlaceholderOrToken || /user|email/i.test(value || ''))) {
             if (cred.username) return cred.username;
             if (cred.email) return cred.email;
           }
@@ -214,10 +235,117 @@ var ActionExecutor = (() => {
     return value;
   }
 
+  /**
+   * Automatically scan for and populate any blank login/credential fields in a container.
+   * Extracts values safely on-device from the local encrypted vault.
+   * @param {Element|Document} [container=document]
+   * @param {object} [preferredCred=null]
+   * @returns {Promise<number>} Number of fields populated
+   */
+  async function _autoPopulateBlankCredentialFields(container = document, preferredCred = null) {
+    if (typeof Vault === 'undefined') return 0;
+
+    let cred = preferredCred;
+    if (!cred) {
+      try {
+        const matches = await Vault.findMatchingCredentials(window.location.href);
+        if (!matches || matches.length === 0) return 0;
+        cred = matches[0];
+      } catch (err) {
+        console.warn('[ActionExecutor] Vault match error during auto-populate:', err);
+        return 0;
+      }
+    }
+
+    const data = cred.data || {};
+    let populatedCount = 0;
+
+    const root = container || document;
+    const inputs = root.querySelectorAll('input:not([type="hidden"]):not([disabled]), textarea:not([disabled])');
+
+    for (const input of inputs) {
+      const tagName = (input.tagName || '').toUpperCase();
+      if (tagName !== 'INPUT' && tagName !== 'TEXTAREA') continue;
+
+      // If input already has a substantive value, don't overwrite it unless it's a token placeholder
+      const curVal = (input.value || '').trim();
+      const isPlaceholder = !curVal || curVal === '••••••••' || curVal === '••••••' || /^\[[A-Z0-9_]+\]$/.test(curVal);
+      if (!isPlaceholder) continue;
+
+      const type = (input.getAttribute('type') || '').toLowerCase();
+      const id = (input.id || '').toLowerCase();
+      const name = (input.getAttribute('name') || '').toLowerCase();
+      const placeholder = (input.getAttribute('placeholder') || '').toLowerCase();
+      const aria = (input.getAttribute('aria-label') || '').toLowerCase();
+      const label = (input.closest('label')?.textContent || input.parentElement?.textContent || '').toLowerCase();
+      const combined = `${id} ${name} ${placeholder} ${aria} ${label}`;
+
+      let valToFill = null;
+
+      // 1. Password field
+      if (type === 'password' || /password|pwd|pass\b/i.test(combined)) {
+        if (!/pin|cvv/i.test(combined) && data.password) {
+          valToFill = data.password;
+        }
+      }
+      // 2. PIN / CVV field
+      if (!valToFill && (/pin|cvv|security-pin|upipin/i.test(combined) || combined.includes('pin'))) {
+        valToFill = data.upiPin || data.pin || data.cvv || data.transactionPin;
+        if (!valToFill) {
+          try {
+            const allCreds = await Vault.getAllCredentials();
+            const pinCred = allCreds.find(c => c.data?.upiPin || c.data?.pin || c.data?.cvv);
+            if (pinCred) {
+              valToFill = pinCred.data.upiPin || pinCred.data.pin || pinCred.data.cvv;
+            }
+          } catch {}
+        }
+      }
+      // 3. Username / Email / Login field
+      if (!valToFill && (type === 'email' || /user|email|login|phone|uname|identifier/i.test(combined))) {
+        valToFill = data.username || data.email;
+      }
+      // 4. Beneficiary Name
+      if (!valToFill && /beneficiary|receiver|payee|recipient/i.test(combined)) {
+        valToFill = data.beneficiary || data.beneficiaryName || data.name;
+      }
+      // 5. Account Number
+      if (!valToFill && /account|acc_num|accno|acct/i.test(combined) && !/name/i.test(combined)) {
+        valToFill = data.accountNumber || data.account;
+      }
+      // 6. IFSC Code
+      if (!valToFill && /ifsc|routing|swift/i.test(combined)) {
+        valToFill = data.ifsc || data.ifscCode;
+      }
+      // 7. Amount
+      if (!valToFill && /amount|transfer-amount/i.test(combined) && (type === 'number' || /amount/i.test(combined))) {
+        valToFill = data.amount || data.defaultAmount;
+      }
+      // 8. Remarks / Purpose
+      if (!valToFill && /remark|purpose|memo|description/i.test(combined)) {
+        valToFill = data.remarks;
+      }
+      // 9. UPI ID / VPA
+      if (!valToFill && /upi|vpa/i.test(combined) && !/pin/i.test(combined)) {
+        valToFill = data.upiId;
+      }
+
+      if (valToFill) {
+        console.log(`[ActionExecutor] Auto-populating blank credential field (${id || name || type}) from vault (${cred.name || cred.domain})`);
+        _setNativeValue(input, valToFill);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        populatedCount++;
+      }
+    }
+
+    return populatedCount;
+  }
+
   // ── Action implementations ──────────────────────────────────────────
 
-  async function _actionClick(action) {
-    const el = _findElement(action);
+  async function _actionClick(action, customTokenMap = null) {
+    const el = _findElement(action, customTokenMap);
     if (!el) return { success: false, error: `Element not found: ${action.selector || action.elementIndex}` };
 
     _highlightElement(el, 'click');
@@ -308,19 +436,30 @@ var ActionExecutor = (() => {
       }, 250);
     }
 
-    // If element is an empty password input, automatically populate it from vault
-    const isPwdEl = (
-      (el.getAttribute('type') || '').toLowerCase() === 'password' ||
-      /password|pwd/i.test(el.id + (el.getAttribute('name') || ''))
-    );
-    if (isPwdEl && !el.value && typeof Vault !== 'undefined') {
+    // If element is an empty input or credential field, automatically populate it from vault
+    const isInputEl = el.tagName.toLowerCase() === 'input' || el.tagName.toLowerCase() === 'textarea';
+    if (isInputEl && (!el.value || el.value === '••••••••') && typeof Vault !== 'undefined') {
       try {
-        const matches = await Vault.findMatchingCredentials(window.location.href);
-        if (matches && matches.length > 0 && matches[0].data?.password) {
-          console.log('[ActionExecutor] Auto-populating clicked empty password field from local vault');
-          _setNativeValue(el, matches[0].data.password);
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
+        await _autoPopulateBlankCredentialFields(el.closest('form') || el.parentElement || document);
+      } catch {}
+    }
+
+    // If clicking a submit/action button, auto-populate any remaining blank credential fields in the form first!
+    const isSubmitOrAction = (
+      (el.getAttribute('type') || '').toLowerCase() === 'submit' ||
+      el.tagName.toLowerCase() === 'button' ||
+      el.getAttribute('role') === 'button' ||
+      /submit|login|signin|sign-in|authorize|pay|transfer/i.test(el.id + (el.className || '') + el.textContent)
+    );
+    if (isSubmitOrAction && typeof Vault !== 'undefined') {
+      try {
+        const formContainer = el.closest('form') || el.closest('.form-container') || el.parentElement;
+        if (formContainer) {
+          const filled = await _autoPopulateBlankCredentialFields(formContainer);
+          if (filled > 0) {
+            console.log(`[ActionExecutor] Auto-populated ${filled} blank credential fields before button click`);
+            await _delay(60);
+          }
         }
       } catch {}
     }
@@ -330,16 +469,24 @@ var ActionExecutor = (() => {
   }
 
   function _setNativeValue(element, value) {
-    const isContentEditable = element.isContentEditable ||
-      element.getAttribute('contenteditable') === 'true' ||
-      element.getAttribute('contenteditable') === '';
+    const isInputOrTextarea = (
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLTextAreaElement ||
+      (element.tagName && (element.tagName.toUpperCase() === 'INPUT' || element.tagName.toUpperCase() === 'TEXTAREA'))
+    );
 
-    if (isContentEditable) {
-      element.focus();
-      element.innerText = value;
-      element.dispatchEvent(new Event('input', { bubbles: true }));
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      return;
+    if (!isInputOrTextarea) {
+      const isContentEditable = element.isContentEditable ||
+        element.getAttribute('contenteditable') === 'true' ||
+        element.getAttribute('contenteditable') === '';
+
+      if (isContentEditable) {
+        element.focus();
+        element.innerText = value;
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
     }
 
     const prototype = element instanceof HTMLTextAreaElement
@@ -356,12 +503,12 @@ var ActionExecutor = (() => {
   // Set of recently typed large payloads to prevent duplicate pasting loops
   const _recentTypeHistory = [];
 
-  async function _actionType(action) {
-    const el = _findElement(action);
+  async function _actionType(action, customTokenMap = null) {
+    const el = _findElement(action, customTokenMap);
     if (!el) return { success: false, error: `Element not found: ${action.selector || action.elementIndex}` };
 
     // Resolve value locally from Reversible Token Map or Encrypted Vault (Zero PII to cloud!)
-    const text = await _resolveVaultValue(el, action.value || action.text || '');
+    const text = await _resolveVaultValue(el, action.value || action.text || '', customTokenMap);
 
     // Anti-repetition loop guard: if identical long text or code was already typed into this target, skip
     const actionKey = `${action.selector || action.elementIndex}::${text.trim()}`;
@@ -470,18 +617,12 @@ var ActionExecutor = (() => {
     // Auto-fill adjacent empty password field if user just typed a login / email
     const elInputType = (el.getAttribute('type') || '').toLowerCase();
     const isLoginField = elInputType === 'email' || /user|login|email/i.test(el.id + (el.getAttribute('name') || ''));
-    if (isLoginField && typeof Vault !== 'undefined') {
+    // Auto-fill any remaining empty credential fields in the same form (username, password, PIN, etc.)
+    if (typeof Vault !== 'undefined') {
       try {
-        const form = el.closest('form') || document;
-        const pwdInput = form.querySelector('input[type="password"], input[name*="password"], input[id*="password"]');
-        if (pwdInput && !pwdInput.value) {
-          const matches = await Vault.findMatchingCredentials(window.location.href);
-          if (matches && matches.length > 0 && matches[0].data?.password) {
-            console.log('[ActionExecutor] Auto-filling empty password field in same form from local vault');
-            _setNativeValue(pwdInput, matches[0].data.password);
-            pwdInput.dispatchEvent(new Event('input', { bubbles: true }));
-            pwdInput.dispatchEvent(new Event('change', { bubbles: true }));
-          }
+        const form = el.closest('form') || el.closest('.form-container') || el.parentElement || document;
+        if (form) {
+          await _autoPopulateBlankCredentialFields(form);
         }
       } catch {}
     }
@@ -754,7 +895,7 @@ var ActionExecutor = (() => {
 
   // ── Helpers ─────────────────────────────────────────────────────────
 
-  function _findElement(action) {
+  function _findElement(action, customTokenMap = null) {
     // 1. Try numeric or string data-pv-index
     if (action.elementIndex !== undefined && action.elementIndex !== null) {
       const idx = parseInt(action.elementIndex, 10);
@@ -766,7 +907,14 @@ var ActionExecutor = (() => {
 
     // 2. Try CSS selector with safe error handling and nth-of-type repair
     if (action.selector && typeof action.selector === 'string') {
-      const sel = action.selector.trim();
+      let sel = action.selector.trim();
+      const tokenMap = {
+        ...(typeof PIIScanner !== 'undefined' && PIIScanner.getTokenMap ? PIIScanner.getTokenMap() : {}),
+        ...(customTokenMap || {})
+      };
+      for (const [tok, orig] of Object.entries(tokenMap || {})) {
+        if (sel.includes(tok)) sel = sel.replaceAll(tok, orig);
+      }
       try {
         const el = document.querySelector(sel);
         if (el) return el;

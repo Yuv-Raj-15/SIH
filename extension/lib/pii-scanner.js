@@ -82,11 +82,28 @@ var PIIScanner = (() => {
       regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
       label: 'IP_ADDRESS',
       severity: 'low',
+      // Only flag IPs near network/server context to avoid false positives (version numbers, prices)
+      contextRequired: true,
     },
     PASSPORT: {
       regex: /\b[A-Z]\d{7}\b/g,
       label: 'PASSPORT',
       severity: 'critical',
+    },
+    SOCIAL_METRIC: {
+      regex: /\b\d+[\s,]*(?:k|m|b)?\s*(?:followers?|following|posts?|likes?|subscribers?|views?|connections?|retweets?)\b/gi,
+      label: 'SOCIAL_METRIC',
+      severity: 'high',
+    },
+    HANDLE: {
+      regex: /(?:^|[\s(])@([a-zA-Z0-9_.]{3,30})\b/g,
+      label: 'USERNAME',
+      severity: 'high',
+    },
+    PERSONAL_URL: {
+      regex: /\b(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.(?:com\.np|np|me|bio|link|site|dev|app|info|portfolio))\b/gi,
+      label: 'PERSONAL_URL',
+      severity: 'medium',
     },
   };
 
@@ -96,23 +113,57 @@ var PIIScanner = (() => {
     'password', 'pass', 'pin', 'cvv', 'otp', 'ssn', 'aadhaar',
     'pan', 'passport', 'license', 'licence', 'salary', 'income',
     'transfer', 'beneficiary', 'routing', 'swift',
+    // Extended: UPI & Indian banking
+    'upi', 'neft', 'rtgs', 'imps', 'vpa', 'payer', 'payee',
+    // Extended: identity & address
+    'dob', 'birth', 'address', 'residence', 'permanent',
+    // Extended: credentials
+    'token', 'secret', 'key', 'api key', 'auth', 'credential',
+    // Extended: financial
+    'debit', 'credit', 'loan', 'emi', 'folio', 'policy',
   ];
 
   // DOM input types that are inherently sensitive
   const SENSITIVE_INPUT_TYPES = ['password', 'email', 'tel'];
   const SENSITIVE_INPUT_NAMES = [
     'password', 'pass', 'pwd', 'email', 'phone', 'tel', 'mobile',
-    'ssn', 'aadhaar', 'pan', 'dob', 'birth', 'account', 'card',
-    'cvv', 'otp', 'pin', 'name', 'address', 'passport',
+    'ssn', 'aadhaar', 'aadhar', 'pan', 'dob', 'birth', 'account', 'card',
+    'cvv', 'otp', 'pin', 'name', 'address', 'addr', 'passport',
+    'upi', 'vpa', 'ifsc', 'routing', 'swift', 'beneficiary',
+    'salary', 'income', 'amount', 'token', 'secret', 'apikey', 'api_key',
   ];
 
   // ── Token storage (for reversible redaction) ────────────────────────
   let _tokenMap = {};   // token → original value
   let _tokenCounter = {};
+  const _registeredTokens = {}; // persistent tokens registered externally (e.g. prompt PII, vault, popup)
+
+  function registerTokens(tokens) {
+    if (!tokens || typeof tokens !== 'object') return;
+    for (const [tok, val] of Object.entries(tokens)) {
+      if (tok && val) {
+        _tokenMap[tok] = val;
+        _registeredTokens[tok] = val;
+      }
+    }
+  }
 
   function _resetTokens() {
-    _tokenMap = {};
+    // Preserve instruction and externally registered tokens across scan cycles
+    const preserved = { ..._registeredTokens };
+    for (const [k, v] of Object.entries(_tokenMap)) {
+      if (k.includes('TARGET_USER') || k.includes('INSTRUCTION') || k.includes('USERNAME')) {
+        preserved[k] = v;
+      }
+    }
+    _tokenMap = preserved;
     _tokenCounter = {};
+    for (const k of Object.keys(preserved)) {
+      const match = k.match(/^\[([A-Z0-9_]+)_(\d+)\]$/);
+      if (match) {
+        _tokenCounter[match[1]] = Math.max(_tokenCounter[match[1]] || 0, parseInt(match[2], 10));
+      }
+    }
   }
 
   function _generateToken(label) {
@@ -177,20 +228,100 @@ var PIIScanner = (() => {
     const textFindings = [];
     const inputFindings = [];
 
+    // 0. Detect active page profile identity (Instagram, Twitter, LinkedIn, GitHub, etc.)
+    const hostname = (typeof window !== 'undefined' && window.location ? window.location.hostname || '' : '').toLowerCase();
+    const pathname = (typeof window !== 'undefined' && window.location ? window.location.pathname || '' : '');
+    const isSocialOrProfilePage = (
+      /instagram\.com|threads\.net|twitter\.com|x\.com|linkedin\.com|facebook\.com|github\.com|tiktok\.com|youtube\.com|pinterest\.com|reddit\.com|bsky\.app|mastodon|medium\.com|quora\.com|discord\.com|telegram\.org|whatsapp\.com/i.test(hostname) ||
+      /\/(?:profile|user|u|in|channel|c|author|member|account)\b/i.test(pathname) ||
+      pathname.includes('/@')
+    );
+
+    // Extract profile handle from URL pathname
+    const pathSegments = pathname.split('/').filter(Boolean);
+    let pageHandle = null;
+    if (pathSegments.length > 0) {
+      const candidate = pathSegments[0].replace(/^@/, '');
+      const reserved = ['explore', 'direct', 'reels', 'stories', 'accounts', 'p', 'reel', 'tv', 'about', 'help', 'privacy', 'settings', 'home', 'search', 'notifications', 'messages', 'login', 'signup', 'in'];
+      if (!reserved.includes(candidate.toLowerCase()) && /^[a-zA-Z0-9_.]{3,35}$/.test(candidate)) {
+        pageHandle = candidate;
+      } else if (pathSegments[0].toLowerCase() === 'in' && pathSegments[1]) {
+        // LinkedIn /in/username
+        pageHandle = pathSegments[1];
+      }
+    }
+
+    // Extract profile name & handle from title or meta tags
+    let pageDisplayName = null;
+    if (typeof document !== 'undefined') {
+      const docTitle = document.title || '';
+      const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content') || '';
+      const titleToParse = ogTitle || docTitle;
+
+      // e.g. "Yuvraj Rauniyar (@yuvraj_rauniyar15) • Instagram photos and videos"
+      const parenMatch = titleToParse.match(/^([^(]+?)\s*\(@([a-zA-Z0-9_.]{3,35})\)/i);
+      if (parenMatch) {
+        pageDisplayName = parenMatch[1].trim();
+        pageHandle = pageHandle || parenMatch[2].trim();
+      } else {
+        const splitMatch = titleToParse.match(/^([^|•\-\/]+)\s*[|•\-\/]/);
+        if (splitMatch && splitMatch[1].trim().length > 2 && splitMatch[1].trim().length < 40) {
+          const cName = splitMatch[1].trim();
+          if (!['instagram', 'twitter', 'linkedin', 'github', 'facebook'].includes(cName.toLowerCase())) {
+            pageDisplayName = cName;
+          }
+        }
+      }
+
+      // Fallback: extract display name directly from profile header DOM if title is generic (e.g. "Instagram")
+      if (!pageDisplayName) {
+        const headerContainer = document.querySelector('header, [role="main"] header, section');
+        if (headerContainer) {
+          const candidates = headerContainer.querySelectorAll('h1, h2, h3, span, div');
+          for (const el of candidates) {
+            const txt = (el.textContent || '').trim();
+            if (txt.length >= 3 && txt.length <= 40 && !txt.includes('\n') && txt !== pageHandle) {
+              if (/^[A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+)+$/.test(txt)) {
+                pageDisplayName = txt;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Register active profile identity tokens
+    let pageHandleToken = null;
+    if (pageHandle) {
+      pageHandleToken = _generateToken('USERNAME');
+      _tokenMap[pageHandleToken] = pageHandle;
+    }
+    let pageNameToken = null;
+    if (pageDisplayName && pageDisplayName.length > 2) {
+      pageNameToken = _generateToken('PERSON_NAME');
+      _tokenMap[pageNameToken] = pageDisplayName;
+    }
+
     // 1. Scan all visible text nodes
     const walker = document.createTreeWalker(
       rootElement,
       NodeFilter.SHOW_TEXT,
       {
         acceptNode: (node) => {
-          // Skip hidden, script, style elements
           const parent = node.parentElement;
           if (!parent) return NodeFilter.FILTER_REJECT;
           const tag = parent.tagName.toLowerCase();
           if (['script', 'style', 'noscript', 'svg'].includes(tag)) return NodeFilter.FILTER_REJECT;
-          if (parent.offsetParent === null && parent !== document.body) return NodeFilter.FILTER_REJECT;
+          if (parent !== document.body) {
+            if (parent.checkVisibility) {
+              if (!parent.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) return NodeFilter.FILTER_REJECT;
+            } else if (parent.offsetParent === null && parent.offsetWidth === 0 && parent.offsetHeight === 0) {
+              return NodeFilter.FILTER_REJECT;
+            }
+          }
           const text = node.textContent.trim();
-          if (text.length < 3) return NodeFilter.FILTER_REJECT;
+          if (text.length < 2) return NodeFilter.FILTER_REJECT;
           return NodeFilter.FILTER_ACCEPT;
         },
       }
@@ -199,11 +330,37 @@ var PIIScanner = (() => {
     let textNode;
     while ((textNode = walker.nextNode())) {
       const text = textNode.textContent;
-      // Get context from parent's label, aria, etc.
       const parent = textNode.parentElement;
       const contextHint = _getElementContext(parent);
 
       const findings = scanText(text, contextHint);
+
+      // Check for profile handle in text
+      if (pageHandle && text.includes(pageHandle)) {
+        const idx = text.indexOf(pageHandle);
+        findings.push({
+          type: 'USERNAME',
+          value: pageHandle,
+          start: idx,
+          end: idx + pageHandle.length,
+          severity: 'high',
+          token: pageHandleToken || _generateToken('USERNAME'),
+        });
+      }
+
+      // Check for display name in text
+      if (pageDisplayName && text.includes(pageDisplayName)) {
+        const idx = text.indexOf(pageDisplayName);
+        findings.push({
+          type: 'PERSON_NAME',
+          value: pageDisplayName,
+          start: idx,
+          end: idx + pageDisplayName.length,
+          severity: 'high',
+          token: pageNameToken || _generateToken('PERSON_NAME'),
+        });
+      }
+
       for (const f of findings) {
         f.element = parent;
         f.rect = _getElementRect(parent);
@@ -221,7 +378,6 @@ var PIIScanner = (() => {
       const inputPlaceholder = (input.placeholder || '').toLowerCase();
       const inputLabel = _getAssociatedLabel(input);
 
-      // Check if the input type or name indicates sensitivity
       const isSensitiveType = SENSITIVE_INPUT_TYPES.includes(inputType);
       const isSensitiveName = SENSITIVE_INPUT_NAMES.some(
         (kw) => inputName.includes(kw) || inputId.includes(kw) || inputPlaceholder.includes(kw) || inputLabel.toLowerCase().includes(kw)
@@ -255,7 +411,6 @@ var PIIScanner = (() => {
         });
       }
 
-      // Also regex-scan the input value
       if (input.value && input.value.length > 3 && inputType !== 'password') {
         const findings = scanText(input.value, inputLabel + ' ' + inputName);
         for (const f of findings) {
@@ -268,34 +423,77 @@ var PIIScanner = (() => {
       }
     }
 
-    // 3. Scan images with faces (mark for vision pipeline)
-    const images = rootElement.querySelectorAll('img[src]');
+    // 3. Scan images, avatars, face pictures, and user media thumbnails
+    const baseImages = Array.from(rootElement.querySelectorAll('img, svg[role="img"], canvas, [role="img"]'));
+    const bgNodes = Array.from(rootElement.querySelectorAll('[style*="background-image"], [style*="background:"]'));
+    // Deduplicate
+    const imageSet = new Set([...baseImages, ...bgNodes]);
     const imageFindings = [];
-    // Only strong profile/avatar keywords — avoid generic terms like 'user'
-    const PROFILE_KEYWORDS = ['avatar', 'profile-pic', 'profile_pic', 'profilepic',
-      'profile-photo', 'profile_photo', 'profile-image', 'profile_image',
-      'user-avatar', 'user_avatar', 'headshot', 'portrait', 'selfie',
-      'face-photo', 'passport-photo'];
+    const AVATAR_REGEX = /\b(avatar|profile|profile[\s_-]?pic|profile[\s_-]?photo|profile[\s_-]?image|user[\s_-]?avatar|user[\s_-]?photo|headshot|portrait|selfie|face|author|creator|pfp|dp)\b/i;
 
-    for (const img of images) {
-      const alt = (img.alt || '').toLowerCase();
-      const cls = (img.className || '').toLowerCase();
-      const id = (img.id || '').toLowerCase();
-      const src = (img.src || '').toLowerCase();
+    for (const el of imageSet) {
+      if (el.checkVisibility) {
+        if (!el.checkVisibility({ checkOpacity: false, checkVisibilityCSS: true })) continue;
+      } else if (el.offsetParent === null && el !== document.body && !el.isConnected) {
+        continue;
+      }
 
-      const combinedText = `${alt} ${cls} ${id} ${src}`;
-      const isProfileImage = PROFILE_KEYWORDS.some((kw) => combinedText.includes(kw));
+      const rect = _getElementRect(el);
+      const w = rect.width || el.naturalWidth || el.offsetWidth || el.clientWidth || 0;
+      const h = rect.height || el.naturalHeight || el.offsetHeight || el.clientHeight || 0;
+      if (w < 16 || h < 16) continue;
+      rect.width = w;
+      rect.height = h;
 
-      // Only flag if keyword match AND image is a reasonable size (not tiny icons)
-      if (isProfileImage && img.naturalWidth >= 40 && img.naturalHeight >= 40) {
+      const tag = el.tagName.toLowerCase();
+      const alt = (el.getAttribute('alt') || '').toLowerCase();
+      const cls = (el.className && typeof el.className === 'string' ? el.className : '').toLowerCase();
+      const id = (el.id || '').toLowerCase();
+      const src = (el.getAttribute('src') || el.src || '').toLowerCase();
+      const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+      const title = (el.getAttribute('title') || '').toLowerCase();
+      const parentAria = (el.parentElement?.getAttribute('aria-label') || '').toLowerCase();
+      const parentCls = (el.parentElement?.className && typeof el.parentElement.className === 'string' ? el.parentElement.className : '').toLowerCase();
+      const styleAttr = (el.getAttribute('style') || '').toLowerCase();
+
+      const combinedText = `${alt} ${cls} ${id} ${aria} ${title} ${parentAria} ${parentCls} ${src} ${styleAttr}`;
+
+      let isFaceOrAvatar = AVATAR_REGEX.test(combinedText);
+
+      // Check circular / avatar shape (common on modern web / social apps)
+      if (!isFaceOrAvatar) {
+        try {
+          const compStyle = window.getComputedStyle(el);
+          const bRadius = compStyle.borderRadius;
+          const isCircular = bRadius === '50%' || parseFloat(bRadius) >= 16;
+          const isSquareOrCircle = Math.abs(w - h) <= 16;
+          if (isCircular && isSquareOrCircle && w >= 24 && w <= 360) {
+            isFaceOrAvatar = true;
+          }
+        } catch {}
+      }
+
+      // Check social & profile page auto-shield
+      // On social profile and feed pages, all user avatars, cards, and photos are faces/PII!
+      if (!isFaceOrAvatar && isSocialOrProfilePage) {
+        const isSystemSvg = tag === 'svg' && /direct|explore|search|home|message|settings|more|menu|heart|comment|share/i.test(combinedText);
+        if (!isSystemSvg) {
+          if (w >= 20 && h >= 20) {
+            isFaceOrAvatar = true;
+          }
+        }
+      }
+
+      if (isFaceOrAvatar) {
+        const token = _generateToken('FACE');
         imageFindings.push({
           type: 'FACE_IMAGE',
           severity: 'high',
-          element: img,
-          rect: _getElementRect(img),
+          element: el,
+          rect,
           source: 'image',
-          src: img.src,
-          token: _generateToken('FACE'),
+          src: src || '(dynamic image)',
+          token,
         });
       }
     }
@@ -328,15 +526,34 @@ var PIIScanner = (() => {
   function sanitizeDOMStructure(domStructure, findings) {
     const sanitized = JSON.parse(JSON.stringify(domStructure)); // Deep clone
 
+    // Aggregate all findings and active tokens
+    const allReplacements = [];
+    for (const f of findings || []) {
+      if (f.value && f.token && typeof f.value === 'string' && f.value.length >= 2) {
+        if (!allReplacements.some(r => r.value === f.value)) {
+          allReplacements.push({ value: f.value, token: f.token });
+        }
+      }
+    }
+    for (const [token, value] of Object.entries(_tokenMap || {})) {
+      if (value && typeof value === 'string' && value.length >= 2) {
+        if (!allReplacements.some(r => r.value === value)) {
+          allReplacements.push({ value, token });
+        }
+      }
+    }
+
+    // Sort descending by value length so longer phrases replace first (e.g. "Yuvraj Rauniyar" before "Yuvraj")
+    allReplacements.sort((a, b) => b.value.length - a.value.length);
+
     for (const element of sanitized.elements || []) {
-      // DOMAnalyzer stores visible text in `text` (not `textContent`).
-      // Sanitize every user-facing string field before the summary is sent.
-      const fieldsToSanitize = ['text', 'value', 'placeholder', 'fieldLabel', 'ariaLabel', 'href'];
+      const fieldsToSanitize = ['text', 'value', 'placeholder', 'fieldLabel', 'ariaLabel', 'title', 'alt', 'href', 'selector'];
       for (const field of fieldsToSanitize) {
         if (typeof element[field] !== 'string' || !element[field]) continue;
-        for (const finding of findings) {
-          if (!finding.value || !finding.token) continue;
-          element[field] = element[field].split(finding.value).join(finding.token);
+        for (const rep of allReplacements) {
+          if (element[field].includes(rep.value)) {
+            element[field] = element[field].replaceAll(rep.value, rep.token);
+          }
         }
       }
     }
@@ -370,7 +587,7 @@ var PIIScanner = (() => {
     if (prev && prev.tagName === 'LABEL') parts.push(prev.textContent);
     // Check parent's text
     const parent = el.parentElement;
-    if (parent) {
+    if (parent && typeof parent.querySelector === 'function') {
       const label = parent.querySelector('label');
       if (label) parts.push(label.textContent);
     }
@@ -391,9 +608,9 @@ var PIIScanner = (() => {
     if (prev && prev.tagName === 'LABEL') return prev.textContent.trim();
     // Check parent's label child
     const parent = input.parentElement;
-    if (parent) {
+    if (parent && typeof parent.querySelector === 'function') {
       const label = parent.querySelector('label');
-      if (label) return label.textContent.trim();
+      if (label && label.textContent) return label.textContent.trim();
     }
     return input.placeholder || input.name || '';
   }
@@ -456,15 +673,77 @@ var PIIScanner = (() => {
    */
   function sanitizeInstruction(text) {
     if (!text || typeof text !== 'string') return text;
-    const findings = scanText(text);
-    if (!findings || findings.length === 0) return text;
 
-    // Sort descending by start position to replace without offsetting indices
-    const sorted = [...findings].sort((a, b) => b.start - a.start);
     let result = text;
-    for (const f of sorted) {
-      result = result.substring(0, f.start) + f.token + result.substring(f.end);
+
+    // 1. Replace any known tokens already registered in _tokenMap
+    for (const [tok, original] of Object.entries(_tokenMap)) {
+      if (original && typeof original === 'string' && original.length > 2 && result.includes(original)) {
+        result = result.replaceAll(original, tok);
+      }
     }
+
+    // 2. Scan for social profile URLs in instruction (e.g. "https://instagram.com/yuvraj_rauniyar15/")
+    const URL_HANDLE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com|twitter\.com|x\.com|github\.com|threads\.net|linkedin\.com\/in)\/([a-zA-Z0-9_.]{3,35})\/?/gi;
+    let urlMatch;
+    while ((urlMatch = URL_HANDLE_REGEX.exec(text)) !== null) {
+      const handle = urlMatch[1];
+      const reserved = ['explore', 'direct', 'reels', 'stories', 'accounts', 'p', 'reel'];
+      if (!reserved.includes(handle.toLowerCase())) {
+        let token = Object.keys(_tokenMap).find(k => _tokenMap[k] === handle);
+        if (!token) {
+          token = _generateToken('TARGET_USER');
+          _tokenMap[token] = handle;
+        }
+        result = result.replaceAll(handle, token);
+      }
+    }
+
+    // 3. Scan for target username/handle in natural language phrases
+    // e.g. "send follow request to yuvraj_rauniyar15 from instagram"
+    // e.g. "follow yuvraj_rauniyar15"
+    // e.g. "visit profile of yuvraj_rauniyar15"
+    const TARGET_REGEX = /(?:follow(?:ing)?|request to|send.*to|to|for|profile (?:of)?|user|account|message|dm|visit|open|view|target)\s+@?([a-zA-Z0-9_.]{3,35})\b/gi;
+    let targetMatch;
+    while ((targetMatch = TARGET_REGEX.exec(text)) !== null) {
+      const username = targetMatch[1];
+      const reservedWords = [
+        'instagram', 'twitter', 'facebook', 'linkedin', 'github', 'amazon', 'google',
+        'the', 'this', 'that', 'page', 'profile', 'user', 'site', 'website', 'account',
+        'tab', 'browser', 'feed', 'post', 'story', 'reel', 'explore', 'home'
+      ];
+      if (!reservedWords.includes(username.toLowerCase())) {
+        let token = Object.keys(_tokenMap).find(k => _tokenMap[k] === username);
+        if (!token) {
+          token = _generateToken('TARGET_USER');
+          _tokenMap[token] = username;
+        }
+        result = result.replaceAll(username, token);
+      }
+    }
+
+    // 4. Scan for @mentions (e.g. "@yuvraj_rauniyar15")
+    const MENTION_REGEX = /@([a-zA-Z0-9_.]{3,35})\b/g;
+    let mentionMatch;
+    while ((mentionMatch = MENTION_REGEX.exec(text)) !== null) {
+      const handle = mentionMatch[1];
+      let token = Object.keys(_tokenMap).find(k => _tokenMap[k] === handle);
+      if (!token) {
+        token = _generateToken('TARGET_USER');
+        _tokenMap[token] = handle;
+      }
+      result = result.replaceAll(`@${handle}`, token);
+    }
+
+    // 5. Run standard PII patterns (email, phone, credit card, social metrics, etc.)
+    const findings = scanText(result);
+    if (findings && findings.length > 0) {
+      const sorted = [...findings].sort((a, b) => b.start - a.start);
+      for (const f of sorted) {
+        result = result.substring(0, f.start) + f.token + result.substring(f.end);
+      }
+    }
+
     return result;
   }
 
@@ -474,6 +753,7 @@ var PIIScanner = (() => {
     scanDOM,
     sanitizeDOMStructure,
     sanitizeInstruction,
+    registerTokens,
     getTokenMap: () => ({ ..._tokenMap }),
     PII_PATTERNS,
   };
